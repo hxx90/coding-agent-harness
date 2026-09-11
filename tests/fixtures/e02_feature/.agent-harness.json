@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "validation_command": [
+    "python",
+    "-m",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider"
+  ],
+  "validation_timeout_seconds": 30,
+  "editable_paths": ["src"],
+  "protected_paths": [
+    "tests",
+    ".agent-harness.json"
+  ],
+  "sensitive_paths": [
+    ".git",
+    ".env"
+  ]
+}
+
