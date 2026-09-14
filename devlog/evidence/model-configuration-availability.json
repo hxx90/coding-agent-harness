@@ -1,0 +1,8 @@
+{
+  "AGENT_HARNESS_BASE_URL": false,
+  "AGENT_HARNESS_API_KEY": false,
+  "AGENT_HARNESS_MODEL": false,
+  "ONEAPI_BASE_URL": false,
+  "ONEAPI_API_KEY": false,
+  "OPENAI_API_KEY": false
+}

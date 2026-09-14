@@ -1,0 +1,14 @@
+version=2.0.0
+streamlit_installed=False
+{
+  "fixture": "real loopback HTTP, deterministic responses",
+  "workspace": "/var/folders/91/8s4wsz217bz3d1c3bml6jhrm0000gn/T/agent-harness-cli-smoke-_kg3ekh2/project",
+  "model_requests": 3,
+  "session_id": "f07a0e99c0e24e0391579990efa41c96",
+  "status": "completed",
+  "verification": "passed",
+  "file": "counter.py",
+  "before": "value = 1",
+  "after": "value = 2",
+  "events": "/var/folders/91/8s4wsz217bz3d1c3bml6jhrm0000gn/T/agent-harness-cli-smoke-_kg3ekh2/events.jsonl"
+}

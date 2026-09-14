@@ -4,17 +4,28 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-harness"
-version = "1.0.0"
-description = "A local, model-agnostic Coding Agent MVP"
+version = "2.0.0"
+description = "A local coding agent with a terminal interface, durable sessions, and explicit permissions"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-  "streamlit>=1.37,<2",
+  "httpx>=0.27,<1",
+  "rich>=13.7,<15",
+  "prompt-toolkit>=3.0.43,<4",
+  "filelock>=3.15,<4",
 ]
 
+[project.scripts]
+agent-harness = "agent_harness.cli:main"
+
 [project.optional-dependencies]
+web = ["streamlit>=1.37,<2"]
 dev = [
   "pytest>=8,<10",
+  "streamlit>=1.37,<2",
+  "mypy>=1.11,<2",
+  "ruff>=0.6,<1",
+  "build>=1.2,<2",
 ]
 
 [tool.setuptools.packages.find]
@@ -24,8 +35,17 @@ where = ["src"]
 agent_harness = ["website_runtime_smoke.js"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests/unit", "tests/integration"]
+testpaths = ["tests/unit", "tests/integration", "tests/cli"]
 addopts = "-q"
 markers = [
   "integration: deterministic Harness integration tests",
 ]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src/agent_harness/coding", "src/agent_harness/cli.py", "src/agent_harness/sandbox.py", "scripts/cli_smoke.py"]
+check_untyped_defs = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+warn_unused_ignores = true
+follow_imports = "silent"

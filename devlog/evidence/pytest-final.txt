@@ -1,0 +1,10 @@
+........................................................................ [ 39%]
+........................................................................ [ 78%]
+........................................                                 [100%]
+============================= slowest 5 durations ==============================
+2.38s call     tests/cli/test_review_regressions.py::test_closed_output_does_not_shorten_command_timeout
+2.03s call     tests/cli/test_cli.py::test_json_stdin_task_resume_sessions_export_import_and_undo
+1.43s call     tests/cli/test_cli.py::test_model_listing_doctor_and_private_auth_storage
+0.99s call     tests/cli/test_review_regressions.py::test_ctrl_c_cancels_permission_prompt_without_an_answer
+0.98s call     tests/integration/test_agent_loop.py::test_twenty_game_site_can_be_built_in_append_batches
+184 passed in 22.30s

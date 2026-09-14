@@ -1,0 +1,70 @@
+{
+  "commit": "228e9095ba3988a02664c3816cb51f98584e86c2",
+  "files": [
+    {
+      "path": "packages/opencode/src/cli/cmd/run.ts",
+      "bytes": 32368,
+      "sha256": "bde848ca17f30834beb4ef0dfecb3b819730746ec2023c1ac55ecef7ca25dd37"
+    },
+    {
+      "path": "packages/opencode/src/cli/cmd/run/entry.body.ts",
+      "bytes": 4237,
+      "sha256": "ef8b0e405c5ba90376a253ef2ef010852efbd608c3f6a3d18d6699172171e9aa"
+    },
+    {
+      "path": "packages/opencode/src/session/processor.ts",
+      "bytes": 27266,
+      "sha256": "0b31e207beda56bd9a4b9b88c9e42d89a0651dd011773748c8e2938dfc3dcb74"
+    },
+    {
+      "path": "packages/opencode/src/session/prompt.ts",
+      "bytes": 64944,
+      "sha256": "f0c5bc64c0f0e966693d4a57f7ede1e9d6e188b396152f04b55303dc75b9b768"
+    },
+    {
+      "path": "packages/opencode/src/session/compaction.ts",
+      "bytes": 21236,
+      "sha256": "8d478570a7e4ad32b746030d4f86a1c673949b1e2259bd716b3885d99283289a"
+    },
+    {
+      "path": "packages/opencode/src/session/session.ts",
+      "bytes": 35643,
+      "sha256": "0c56ae3535e29cae0de51156eaba2842c0896309f1d6b12525566b4a8ba4c7f2"
+    },
+    {
+      "path": "packages/opencode/src/session/instruction.ts",
+      "bytes": 8581,
+      "sha256": "fee79c023eae44f720d4d600f334a987ad5f7615c4a008a20c89131a92684a8f"
+    },
+    {
+      "path": "packages/opencode/src/permission/evaluate.ts",
+      "bytes": 29,
+      "sha256": "0ee7b7fea6766c57ce0583bd6f23a303c5af314c0e5287018fa6bdfdc38e5a6e"
+    },
+    {
+      "path": "packages/opencode/src/permission/index.ts",
+      "bytes": 7861,
+      "sha256": "5b9e4aa65290a39363722b9fae4c68080188d8ed76896afa0d96cd9dbfd2821d"
+    },
+    {
+      "path": "packages/opencode/src/tool/registry.ts",
+      "bytes": 17374,
+      "sha256": "a8b24a6d58a80c42307e251905dbaa4f25ca0724569b1e531e412da934ab00fe"
+    },
+    {
+      "path": "packages/opencode/src/tool/shell.ts",
+      "bytes": 20439,
+      "sha256": "342d742ae324782d222465c202dcdfcb7cc35a4cecf04e87f9881f1794d921ac"
+    },
+    {
+      "path": "packages/opencode/src/tool/task.ts",
+      "bytes": 14200,
+      "sha256": "db09fa5868ad3ecfdd83aa2bb7243f85e9e2cd13d0b19fd6f307f7a337b2b36e"
+    },
+    {
+      "path": "packages/opencode/src/skill/index.ts",
+      "bytes": 11843,
+      "sha256": "91dce57f590e1ad3103e0555b893500e098a95cde2739422b699233889b205e6"
+    }
+  ]
+}

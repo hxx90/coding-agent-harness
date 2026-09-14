@@ -1,0 +1,216 @@
+* Creating isolated environment: venv+pip...
+* Installing packages in isolated environment:
+  - setuptools>=68
+* Getting build dependencies for sdist...
+running egg_info
+writing src/agent_harness.egg-info/PKG-INFO
+writing dependency_links to src/agent_harness.egg-info/dependency_links.txt
+writing entry points to src/agent_harness.egg-info/entry_points.txt
+writing requirements to src/agent_harness.egg-info/requires.txt
+writing top-level names to src/agent_harness.egg-info/top_level.txt
+reading manifest file 'src/agent_harness.egg-info/SOURCES.txt'
+writing manifest file 'src/agent_harness.egg-info/SOURCES.txt'
+* Installed build dependency versions:
+  - setuptools==84.0.0
+* Building sdist...
+running sdist
+running egg_info
+writing src/agent_harness.egg-info/PKG-INFO
+writing dependency_links to src/agent_harness.egg-info/dependency_links.txt
+writing entry points to src/agent_harness.egg-info/entry_points.txt
+writing requirements to src/agent_harness.egg-info/requires.txt
+writing top-level names to src/agent_harness.egg-info/top_level.txt
+reading manifest file 'src/agent_harness.egg-info/SOURCES.txt'
+writing manifest file 'src/agent_harness.egg-info/SOURCES.txt'
+running check
+creating agent_harness-2.0.0
+creating agent_harness-2.0.0/src/agent_harness
+creating agent_harness-2.0.0/src/agent_harness.egg-info
+creating agent_harness-2.0.0/src/agent_harness/coding
+copying files to agent_harness-2.0.0...
+copying README.md -> agent_harness-2.0.0
+copying pyproject.toml -> agent_harness-2.0.0
+copying src/agent_harness/__init__.py -> agent_harness-2.0.0/src/agent_harness
+copying src/agent_harness/cli.py -> agent_harness-2.0.0/src/agent_harness
+copying src/agent_harness/config.py -> agent_harness-2.0.0/src/agent_harness
+copying src/agent_harness/domain.py -> agent_harness-2.0.0/src/agent_harness
+copying src/agent_harness/errors.py -> agent_harness-2.0.0/src/agent_harness
+copying src/agent_harness/helper_scripts.py -> agent_harness-2.0.0/src/agent_harness
+copying src/agent_harness/javascript.py -> agent_harness-2.0.0/src/agent_harness
+copying src/agent_harness/model_adapter.py -> agent_harness-2.0.0/src/agent_harness
+copying src/agent_harness/orchestrator.py -> agent_harness-2.0.0/src/agent_harness
+copying src/agent_harness/patching.py -> agent_harness-2.0.0/src/agent_harness
+copying src/agent_harness/project_bootstrap.py -> agent_harness-2.0.0/src/agent_harness
+copying src/agent_harness/prompts.py -> agent_harness-2.0.0/src/agent_harness
+copying src/agent_harness/sandbox.py -> agent_harness-2.0.0/src/agent_harness
+copying src/agent_harness/snapshot.py -> agent_harness-2.0.0/src/agent_harness
+copying src/agent_harness/tools.py -> agent_harness-2.0.0/src/agent_harness
+copying src/agent_harness/trace.py -> agent_harness-2.0.0/src/agent_harness
+copying src/agent_harness/validation.py -> agent_harness-2.0.0/src/agent_harness
+copying src/agent_harness/website_output.py -> agent_harness-2.0.0/src/agent_harness
+copying src/agent_harness/website_runtime_smoke.js -> agent_harness-2.0.0/src/agent_harness
+copying src/agent_harness/workspace.py -> agent_harness-2.0.0/src/agent_harness
+copying src/agent_harness.egg-info/PKG-INFO -> agent_harness-2.0.0/src/agent_harness.egg-info
+copying src/agent_harness.egg-info/SOURCES.txt -> agent_harness-2.0.0/src/agent_harness.egg-info
+copying src/agent_harness.egg-info/dependency_links.txt -> agent_harness-2.0.0/src/agent_harness.egg-info
+copying src/agent_harness.egg-info/entry_points.txt -> agent_harness-2.0.0/src/agent_harness.egg-info
+copying src/agent_harness.egg-info/requires.txt -> agent_harness-2.0.0/src/agent_harness.egg-info
+copying src/agent_harness.egg-info/top_level.txt -> agent_harness-2.0.0/src/agent_harness.egg-info
+copying src/agent_harness/coding/__init__.py -> agent_harness-2.0.0/src/agent_harness/coding
+copying src/agent_harness/coding/changes.py -> agent_harness-2.0.0/src/agent_harness/coding
+copying src/agent_harness/coding/context.py -> agent_harness-2.0.0/src/agent_harness/coding
+copying src/agent_harness/coding/extensions.py -> agent_harness-2.0.0/src/agent_harness/coding
+copying src/agent_harness/coding/permissions.py -> agent_harness-2.0.0/src/agent_harness/coding
+copying src/agent_harness/coding/provider.py -> agent_harness-2.0.0/src/agent_harness/coding
+copying src/agent_harness/coding/session.py -> agent_harness-2.0.0/src/agent_harness/coding
+copying src/agent_harness/coding/settings.py -> agent_harness-2.0.0/src/agent_harness/coding
+copying src/agent_harness/coding/storage.py -> agent_harness-2.0.0/src/agent_harness/coding
+copying src/agent_harness/coding/tools.py -> agent_harness-2.0.0/src/agent_harness/coding
+copying src/agent_harness/coding/types.py -> agent_harness-2.0.0/src/agent_harness/coding
+copying src/agent_harness/coding/workspace.py -> agent_harness-2.0.0/src/agent_harness/coding
+Writing agent_harness-2.0.0/setup.cfg
+Creating tar archive
+removing 'agent_harness-2.0.0' (and everything under it)
+* Building wheel from sdist
+* Creating isolated environment: venv+pip...
+* Installing packages in isolated environment:
+  - setuptools>=68
+* Getting build dependencies for wheel...
+running egg_info
+writing src/agent_harness.egg-info/PKG-INFO
+writing dependency_links to src/agent_harness.egg-info/dependency_links.txt
+writing entry points to src/agent_harness.egg-info/entry_points.txt
+writing requirements to src/agent_harness.egg-info/requires.txt
+writing top-level names to src/agent_harness.egg-info/top_level.txt
+reading manifest file 'src/agent_harness.egg-info/SOURCES.txt'
+writing manifest file 'src/agent_harness.egg-info/SOURCES.txt'
+* Installed build dependency versions:
+  - setuptools==84.0.0
+* Building wheel...
+running bdist_wheel
+running build
+running build_py
+creating build/lib/agent_harness
+copying src/agent_harness/trace.py -> build/lib/agent_harness
+copying src/agent_harness/config.py -> build/lib/agent_harness
+copying src/agent_harness/domain.py -> build/lib/agent_harness
+copying src/agent_harness/project_bootstrap.py -> build/lib/agent_harness
+copying src/agent_harness/website_output.py -> build/lib/agent_harness
+copying src/agent_harness/tools.py -> build/lib/agent_harness
+copying src/agent_harness/__init__.py -> build/lib/agent_harness
+copying src/agent_harness/helper_scripts.py -> build/lib/agent_harness
+copying src/agent_harness/prompts.py -> build/lib/agent_harness
+copying src/agent_harness/patching.py -> build/lib/agent_harness
+copying src/agent_harness/sandbox.py -> build/lib/agent_harness
+copying src/agent_harness/cli.py -> build/lib/agent_harness
+copying src/agent_harness/orchestrator.py -> build/lib/agent_harness
+copying src/agent_harness/errors.py -> build/lib/agent_harness
+copying src/agent_harness/workspace.py -> build/lib/agent_harness
+copying src/agent_harness/model_adapter.py -> build/lib/agent_harness
+copying src/agent_harness/javascript.py -> build/lib/agent_harness
+copying src/agent_harness/snapshot.py -> build/lib/agent_harness
+copying src/agent_harness/validation.py -> build/lib/agent_harness
+creating build/lib/agent_harness/coding
+copying src/agent_harness/coding/changes.py -> build/lib/agent_harness/coding
+copying src/agent_harness/coding/provider.py -> build/lib/agent_harness/coding
+copying src/agent_harness/coding/tools.py -> build/lib/agent_harness/coding
+copying src/agent_harness/coding/session.py -> build/lib/agent_harness/coding
+copying src/agent_harness/coding/__init__.py -> build/lib/agent_harness/coding
+copying src/agent_harness/coding/types.py -> build/lib/agent_harness/coding
+copying src/agent_harness/coding/extensions.py -> build/lib/agent_harness/coding
+copying src/agent_harness/coding/context.py -> build/lib/agent_harness/coding
+copying src/agent_harness/coding/storage.py -> build/lib/agent_harness/coding
+copying src/agent_harness/coding/settings.py -> build/lib/agent_harness/coding
+copying src/agent_harness/coding/permissions.py -> build/lib/agent_harness/coding
+copying src/agent_harness/coding/workspace.py -> build/lib/agent_harness/coding
+running egg_info
+writing src/agent_harness.egg-info/PKG-INFO
+writing dependency_links to src/agent_harness.egg-info/dependency_links.txt
+writing entry points to src/agent_harness.egg-info/entry_points.txt
+writing requirements to src/agent_harness.egg-info/requires.txt
+writing top-level names to src/agent_harness.egg-info/top_level.txt
+reading manifest file 'src/agent_harness.egg-info/SOURCES.txt'
+writing manifest file 'src/agent_harness.egg-info/SOURCES.txt'
+copying src/agent_harness/website_runtime_smoke.js -> build/lib/agent_harness
+installing to build/bdist.macosx-15.0-arm64/wheel
+running install
+running install_lib
+creating build/bdist.macosx-15.0-arm64/wheel
+creating build/bdist.macosx-15.0-arm64/wheel/agent_harness
+copying build/lib/agent_harness/trace.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness
+copying build/lib/agent_harness/config.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness
+copying build/lib/agent_harness/domain.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness
+copying build/lib/agent_harness/project_bootstrap.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness
+copying build/lib/agent_harness/website_output.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness
+copying build/lib/agent_harness/tools.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness
+copying build/lib/agent_harness/__init__.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness
+copying build/lib/agent_harness/helper_scripts.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness
+copying build/lib/agent_harness/prompts.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness
+copying build/lib/agent_harness/patching.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness
+copying build/lib/agent_harness/sandbox.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness
+copying build/lib/agent_harness/cli.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness
+copying build/lib/agent_harness/orchestrator.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness
+copying build/lib/agent_harness/website_runtime_smoke.js -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness
+creating build/bdist.macosx-15.0-arm64/wheel/agent_harness/coding
+copying build/lib/agent_harness/coding/changes.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness/coding
+copying build/lib/agent_harness/coding/provider.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness/coding
+copying build/lib/agent_harness/coding/tools.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness/coding
+copying build/lib/agent_harness/coding/session.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness/coding
+copying build/lib/agent_harness/coding/__init__.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness/coding
+copying build/lib/agent_harness/coding/types.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness/coding
+copying build/lib/agent_harness/coding/extensions.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness/coding
+copying build/lib/agent_harness/coding/context.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness/coding
+copying build/lib/agent_harness/coding/storage.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness/coding
+copying build/lib/agent_harness/coding/settings.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness/coding
+copying build/lib/agent_harness/coding/permissions.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness/coding
+copying build/lib/agent_harness/coding/workspace.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness/coding
+copying build/lib/agent_harness/errors.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness
+copying build/lib/agent_harness/workspace.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness
+copying build/lib/agent_harness/model_adapter.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness
+copying build/lib/agent_harness/javascript.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness
+copying build/lib/agent_harness/snapshot.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness
+copying build/lib/agent_harness/validation.py -> build/bdist.macosx-15.0-arm64/wheel/./agent_harness
+running install_egg_info
+Copying src/agent_harness.egg-info to build/bdist.macosx-15.0-arm64/wheel/./agent_harness-2.0.0-py3.11.egg-info
+running install_scripts
+creating build/bdist.macosx-15.0-arm64/wheel/agent_harness-2.0.0.dist-info/WHEEL
+creating '/private/tmp/agent-harness-cli-dist-20260915/.tmp-f2h1nqd2/agent_harness-2.0.0-py3-none-any.whl' and adding 'build/bdist.macosx-15.0-arm64/wheel' to it
+adding 'agent_harness/__init__.py'
+adding 'agent_harness/cli.py'
+adding 'agent_harness/config.py'
+adding 'agent_harness/domain.py'
+adding 'agent_harness/errors.py'
+adding 'agent_harness/helper_scripts.py'
+adding 'agent_harness/javascript.py'
+adding 'agent_harness/model_adapter.py'
+adding 'agent_harness/orchestrator.py'
+adding 'agent_harness/patching.py'
+adding 'agent_harness/project_bootstrap.py'
+adding 'agent_harness/prompts.py'
+adding 'agent_harness/sandbox.py'
+adding 'agent_harness/snapshot.py'
+adding 'agent_harness/tools.py'
+adding 'agent_harness/trace.py'
+adding 'agent_harness/validation.py'
+adding 'agent_harness/website_output.py'
+adding 'agent_harness/website_runtime_smoke.js'
+adding 'agent_harness/workspace.py'
+adding 'agent_harness/coding/__init__.py'
+adding 'agent_harness/coding/changes.py'
+adding 'agent_harness/coding/context.py'
+adding 'agent_harness/coding/extensions.py'
+adding 'agent_harness/coding/permissions.py'
+adding 'agent_harness/coding/provider.py'
+adding 'agent_harness/coding/session.py'
+adding 'agent_harness/coding/settings.py'
+adding 'agent_harness/coding/storage.py'
+adding 'agent_harness/coding/tools.py'
+adding 'agent_harness/coding/types.py'
+adding 'agent_harness/coding/workspace.py'
+adding 'agent_harness-2.0.0.dist-info/METADATA'
+adding 'agent_harness-2.0.0.dist-info/WHEEL'
+adding 'agent_harness-2.0.0.dist-info/entry_points.txt'
+adding 'agent_harness-2.0.0.dist-info/top_level.txt'
+adding 'agent_harness-2.0.0.dist-info/RECORD'
+removing build/bdist.macosx-15.0-arm64/wheel
+Successfully built agent_harness-2.0.0.tar.gz and agent_harness-2.0.0-py3-none-any.whl

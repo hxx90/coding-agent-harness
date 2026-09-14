@@ -1,0 +1,10 @@
+........................................................................ [ 44%]
+........................................................................ [ 88%]
+...................                                                      [100%]
+============================= slowest 5 durations ==============================
+2.28s call     tests/cli/test_cli.py::test_json_stdin_task_resume_sessions_export_import_and_undo
+1.58s call     tests/cli/test_cli.py::test_model_listing_doctor_and_private_auth_storage
+1.04s call     tests/integration/test_agent_loop.py::test_twenty_game_site_can_be_built_in_append_batches
+1.02s call     tests/cli/test_cli.py::test_terminal_ctrl_c_cancels_http_and_allows_next_task
+0.98s call     tests/cli/test_cli.py::test_terminal_ctrl_c_reaps_shell_and_keeps_changes
+163 passed in 19.87s

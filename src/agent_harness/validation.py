@@ -18,6 +18,7 @@ from .config import WorkspaceConfig
 from .domain import ValidationResult
 from .javascript import check_javascript_syntax, check_website_runtime
 from .trace import Redactor, SENSITIVE_NAME_RE
+from .sandbox import python_launcher_rules
 
 
 OUTPUT_LIMIT = 200 * 1024
@@ -135,12 +136,13 @@ class ValidationRunner:
             '(version 1)(deny default)(import "system.sb")'
             "(allow process-exec %s)(allow process-info*)"
             "(allow file-read* %s)"
-            "(allow file-read-metadata %s)%s"
+            "(allow file-read-metadata %s)%s%s"
             "(deny network*)(deny file-write*)%s"
         ) % (
             process_rules,
             read_rules,
             metadata_rules,
+            python_launcher_rules(executable),
             sensitive_denials,
             (
                 "(allow file-write* (subpath %s))"

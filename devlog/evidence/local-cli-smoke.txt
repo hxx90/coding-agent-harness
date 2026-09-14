@@ -1,0 +1,12 @@
+{
+  "fixture": "real loopback HTTP, deterministic responses",
+  "workspace": "/var/folders/91/8s4wsz217bz3d1c3bml6jhrm0000gn/T/agent-harness-cli-smoke-5x870i6h/project",
+  "model_requests": 3,
+  "session_id": "c6f3cf134d674af7a1297fa4f7e4993e",
+  "status": "completed",
+  "verification": "passed",
+  "file": "counter.py",
+  "before": "value = 1",
+  "after": "value = 2",
+  "events": "/var/folders/91/8s4wsz217bz3d1c3bml6jhrm0000gn/T/agent-harness-cli-smoke-5x870i6h/events.jsonl"
+}

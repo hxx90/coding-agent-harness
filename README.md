@@ -1,95 +1,92 @@
 # Coding Agent Harness
 
-起因是想给一个自研模型配一套 Codex 式的编码智能体。模型本身已经支持多轮对话和工具调用，但从“会调用工具”到“能独立改完一个工程”之间还差多少，没有现成的答案。
+一个 Python 编写的本地 Coding Agent CLI：在终端里读取项目、连续对话、修改代码、运行验证并根据错误继续修复。支持任意已有或空项目目录，不需要先启动网页或编写工作区配置。
 
-所以先做一个最小可运行的本地实验台，再用一个具体任务去探边界：让模型从零创建一个包含 20 款童年游戏的网站，其中一款要是能在网页里直接玩的简化版我的世界。
+当前版本 **2.0.0**。交互界面采用简单输入提示和斜杠命令，同时提供单次任务与 JSONL 输出。实现参考 OpenCode 的会话、工具、权限和流式执行设计，具体源码版本与取舍记录在 [devlog](devlog/README.md)。
 
-选这个任务是因为它够大也够容易暴露问题。20 个模块必须分批生成，单文件会长到几万字符，游戏注册接口要模型自己设计，而“能不能打开玩”有客观判据，不像多数代码评测那样只能比对字符串。
+## 安装与运行
 
-实际跑了八轮，模型一次都没有独立完成。八轮里发现的问题绝大多数出在实验台自己身上，包括最后一轮的评估假阳性：所有验收都通过、状态记为成功，而 20 款游戏一个都打不开。下面是完整记录。
-
-## 它做什么
-
-用户提交一次任务，模型在源项目的隔离副本中自主读取、搜索、修改、运行验证和修复，直到 Harness 判定成功或触发止损。源项目不被修改。
-
-单进程本地应用，Python 3.11+ 与 Streamlit，11 个结构化工具。辅助 Python 脚本可由模型临时创建，但只能读取隔离副本，不能写工程、联网或启动子进程。自动执行依赖 macOS `sandbox-exec`。当前版本 v1.0.0，67 项确定性测试通过。
-
-## 关键设计
-
-**成功判定权归 Harness。** 任务只有同时满足四个条件才记为成功：Snapshot 检测到至少一个工程文件变化；最后一次变化之后执行了固定验证命令；验证未超时、未取消、无 Runner 错误且退出码为 0；被修改的文件在验证期间没有发生未记录的外部变化。模型输出“已完成”、没有产生变更、或者改完没有重新验证，都不能进入成功状态。
-
-**评估边界对模型只读。** 验证命令以参数数组执行、不经过 Shell，且不能被当前运行改写。测试、工作区配置和敏感路径不可修改，敏感路径连内容都不复制给模型。
-
-**最终验证执行真实入口。** 静态网站的最终验证会在只读沙箱内逐个启动 manifest 里的每款游戏，启动抛异常或舞台空白即判失败并返回具体游戏 ID。这条是第八轮之后才加的，原因见下。
-
-**工具集按状态和模型动态决定。** 每轮只发送当前阶段真正可用的工具：辅助脚本额度用尽后从 Schema 中移除，连续 6 次只读分析暂停辅助脚本，连续 10 次后只保留修改、验证和阻塞上报。编辑工具按模型分流，对 Unified Diff 不稳定的模型改用基于唯一匹配的精确替换。
-
-## 八轮试跑
-
-模型为 MiniMax M3，任务与工作区每轮相同，八轮累计消耗超过 240 万 Token。
-
-| 轮 | 结果 | 问题 | 调整 |
-| --- | --- | --- | --- |
-| 1 | 连续 3 次 `patch_invalid` 熔断 | Patch 解析器不接受模型输出的无前导符空白行；大文件只能走 Unified Diff | 空白行按原文当前位置区分上下文与新增；增加 `write_file` 支持整写与追加 |
-| 2 | 模型网关返回 504 | 一次生成完整 `app.js` 的响应过长 | 单次改动上限 12,000 字符并写入 Tool Schema；要求先建核心框架再分批追加 |
-| 3 | 3 次 Patch 冲突熔断 | 模型把合法的闭包外注册结构误判为无法访问，反复构造与最新文件不匹配的 hunk；工具结果不反馈注册进度 | append 缺换行时自动补齐；写入后返回已注册与缺失的游戏 ID；旧上下文在 ±100 行内唯一匹配时自动重定位 |
-| 4 | 40 Turn 用满，未进入验证 | 进度识别只接受字面量 ID，实际已实现 5 款却始终返回 0；上下文压缩占位符被模型当作源码写进 `app.js` | 兼容 `registerGame(game.id, ...)`；禁止写入压缩摘要；只保留最近 6 个工具轮次加确定性现场检查点，大工具结果给有界预览 |
-| 5 | 40 Turn 用满 | 首次跑到固定验证，7 项过 5 项。另外 `node --check` 发现一处模块边界写成了字面量 `\n`，旧验收只查字符串和代码信号，从不解析 JavaScript | 每次修改 `.js` 后返回 `node --check` 诊断；静态网站的最终验证必须先通过语法检查 |
-| 6 | 熔断，工程零修改 | 临时脚本达到 10 个上限后工具仍留在 Schema 中，模型连续三次创建新脚本失败；工具也不支持它反复尝试的“一次调用写入并执行” | `run_helper_script` 可接收 `source` 单次完成写入与只读运行；第 11 个脚本淘汰最旧文件；每轮只发送当前可用工具 |
-| 7 | 单批次 40 Turn 用满 | 9 次 Patch 中 5 次因格式、冲突或无变化失败；用满后需要人工点继续 | 该模型改用 `edit_file(old_string, new_string)`，不再向它暴露 `apply_patch`；增加无进展动作保护；有成功变更时自动续批次，并设任务级总上限 |
-| 8 | `success`，但产物无法运行 | 通过语法检查和全部 7 项静态验收，20 款游戏运行时全部启动失败 | 增加沙箱内逐游戏启动检查 |
-
-前七轮的完整现场记录在 [docs/history](docs/history/README.md)，第八轮记在[验收记录](docs/acceptance-report.md)第 3 节。
-
-## 第八轮：验收全过，产物打不开
-
-第八轮的精确编辑和自动续批次生效后，现场通过了 JavaScript 语法检查和全部 7 项静态验收，Harness 判定成功。在页面预览里点击游戏，显示“游戏加载失败”，运行时复现结果是 20 款全部无法启动：核心框架和后续追加的游戏模块混用了不同版本的 factory、HUD、stage、canvas 和 cleanup 接口。
-
-两道门槛都没能拦住它。静态验收查的是源码里该有的信号——清单完整、注册调用存在、没有占位词；`node --check` 保证代码能被解析。问题是这两道检查都停在文本层面，没有任何一道真正执行过入口。
-
-改法是在只读沙箱里逐个启动 manifest 中的游戏，启动抛异常或舞台空白就判失败，并返回具体是哪一款。修复后当前产物通过 20/20 启动检查。但接口兼容修复是在 Harness 一侧做的，因此这次不计作模型独立完成任务。
-
-## 八轮之后的几点判断
-
-前七轮的失败会立刻暴露，看终止状态就知道要修什么。第八轮不会：它进入了成功状态，如果没有人手动点开预览，这个结果会被当成一次成功记录下来，并进一步支撑“模型能独立完成建站任务”的结论。评估环节出错的代价比工程环节高，因为它不报错。
-
-主因归给模型的只有一轮，归给 Harness 的五轮，归给模型服务一轮。所以每轮都按模型、Harness、环境、评估、预算五层分别判断，并写明本轮不能得出什么结论。不做这一步的话，工具缺陷会被直接记成模型能力不足。
-
-工具协议的选择本身会影响成功率。同一个模型在 Unified Diff 上 9 次失败 5 次，换成基于唯一匹配的精确替换后明显好转。这部分差异不应计入模型能力。
-
-熔断和预算只是止损器。四次熔断每次都按设计正确触发，但真正要改的始终是触发它的那个缺陷；靠放宽预算掩盖工具兼容问题，只会把同一个错误重复更多次。
-
-进入模型上下文的中间产物要假设会被写回文件。压缩占位符 `[HARNESS_COMPACTED ...]` 被模型当成项目代码抄进了 `app.js`，因为它看起来就像代码。
-
-## 边界
-
-- 单模型、单任务族、八轮，样本量只够发现 Harness 缺陷，不足以得出任何模型完成率结论。
-- 最终 20/20 启动通过是 Harness 侧接口兼容修复之后的产物，不计作模型独立完成。
-- 尚未做过一次全新工作区、无人工干预的完整重跑。当前现场跨越多个版本，只用于验证恢复能力。
-- 自动执行依赖 macOS `sandbox-exec`，不等同于容器或虚拟机隔离；其他系统只能用确认后执行。
-- 从零建站只覆盖原生离线 HTML/CSS/JavaScript，不含后端和构建链。
-- 逐游戏启动检查只覆盖首次启动、同步异常和空白舞台，替代不了完整玩法和视觉的人工试玩。
-
-## 运行
-
-需要 Python 3.11 或更高版本。建站任务还需要 Node.js，用于语法检查和受限的运行时冒烟检查。
+需要 Python 3.11+：
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
-python -m pip install -e '.[dev]'
-streamlit run app.py
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .
+
+export AGENT_HARNESS_BASE_URL="https://your-model-service.example/v1"
+export AGENT_HARNESS_MODEL="your-model-id"
+agent-harness auth login
+agent-harness doctor
+
+agent-harness -C /path/to/project
 ```
 
-页面只绑定 `localhost`。模型通过 `AGENT_HARNESS_BASE_URL`、`AGENT_HARNESS_API_KEY`、`AGENT_HARNESS_MODEL` 配置，也可以在侧边栏填写，需要兼容 OpenAI Chat Completions Tool Calling。API Key 不写入工作区、模型上下文或 Trace；项目文件与工具结果会发送给所配置的模型服务。
+模型服务需兼容 OpenAI Chat Completions 的工具调用协议。也可以设置 `AGENT_HARNESS_API_KEY`，不用保存凭据。
 
-把已有项目作为工作区时，根目录需要 `.agent-harness.json` 声明验证命令与路径权限，格式见[技术设计](docs/harness-technical-design.md)。也可以用 `python scripts/prepare_fixture.py e01` 生成一个可直接试的临时项目。
+```bash
+# 单次只读分析
+agent-harness -C /path/to/project run --mode plan "解释项目入口与模块关系"
 
-## 文档
+# 编码任务，授权文件修改和固定验证
+agent-harness -C /path/to/project run \
+  --allow write --allow edit --allow test \
+  --test-command "python -m pytest -q" \
+  "修复空用户名被接受的问题并通过测试"
 
-- [产品需求文档](docs/product-proposal.md) — 目标、范围与明确不做的部分
-- [技术设计](docs/harness-technical-design.md) — 状态机、工具契约、路径权限与 Trace 格式
-- [验收方案](docs/acceptance-test-plan.md) — 验收项设计与预期结果
-- [验收记录](docs/acceptance-report.md) — 67 项测试结果与八轮试跑汇总
-- [自动执行实现与边界](docs/autonomous-mode-mvp.md)
-- [从零建站实现与验收](docs/zero-code-website.md)
-- [前七轮原始归因报告](docs/history/README.md)
+# 管道与会话继续
+printf '分析代码结构\n' | agent-harness -C /path/to/project run --json
+agent-harness -C /path/to/project run --session latest "继续上次任务"
+```
+
+在交互模式输入 `/help` 查看命令；`/diff`、`/undo`、`/redo` 管理本轮修改，`/mode plan` 切换只读规划，`/resume ID` 恢复会话。
+
+## 已实现能力
+
+- 连续对话、持久化与跨进程恢复、会话列表/查看/导入/导出。
+- 文件读取、Glob、字面量搜索、完整写入、精确编辑、Unified Diff、Shell、固定验证与待办。
+- Plan/Build 模式，统一 allow/ask/deny 权限，非交互运行缺少授权时明确退出。
+- HTTP/SSE 流式文本与工具参数、用量统计、有限重试、取消、请求/Token/时间预算。
+- 按轮 Diff、撤销/重做、外部文件冲突保护；中断后不盲目重放未知结果的工具。
+- AGENTS.md、文本附件、上下文压缩、本地 Skills、只读探索子会话、MCP stdio 工具。
+- 用户/项目/环境/命令行配置、凭据管理、模型列表和连接诊断。
+
+`completed` 表示当前对话轮正常结束，`verification=passed` 才表示配置的验证命令对当前状态通过。未配置验证时会明确显示 `not_configured`。
+
+CLI 直接操作选定的项目。文件工具会检查路径与变更冲突；获准的 Shell/MCP 是可信本地执行，不是 OS 沙箱，其项目外或系统副作用不保证可撤销。详细限制见[使用手册](devlog/03-user-guide.md)。
+
+## 架构与文档
+
+```text
+cli.py（交互 / 脚本 / JSONL）
+  └─ coding/session.py（会话循环、恢复、预算与验证）
+      ├─ provider.py（模型 HTTP/SSE）
+      ├─ tools.py → permissions.py / workspace.py（工具、权限、文件和命令）
+      ├─ changes.py（工具变更归属） / storage.py（会话与日志）
+      ├─ context.py（指令、附件、压缩）
+      └─ extensions.py（Skill、探索子会话、MCP）
+```
+
+- [当前架构](devlog/02-architecture.md)
+- [完整使用手册](devlog/03-user-guide.md)
+- [测试与验收记录](devlog/04-validation.md)
+- [开发记录与 OpenCode 源码参考](devlog/README.md)
+- [v1 实验台与八轮模型试跑记录](docs/v1-experiment-overview.md)
+
+## 开发与可选网页
+
+```bash
+python -m pip install -e '.[dev]'
+python -m pytest
+python -m mypy
+python -m ruff check src/agent_harness/coding src/agent_harness/cli.py src/agent_harness/sandbox.py tests/cli
+python -m build
+```
+
+旧 Streamlit 实验台继续作为可选入口，使用原来的隔离副本和任务状态机：
+
+```bash
+python -m pip install -e '.[web]'
+streamlit run app.py --server.address localhost
+```
+
+旧网页的自主执行依赖 macOS `sandbox-exec`。CLI 的验证使用真实本地 HTTP/SSE 服务、真实文件、Shell/MCP 子进程和 PTY；当前没有真实模型密钥，未将协议测试结果表述为真实模型能力验证。

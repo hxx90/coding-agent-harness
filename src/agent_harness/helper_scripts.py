@@ -19,6 +19,7 @@ from .config import WorkspaceConfig
 from .errors import ToolExecutionError
 from .trace import Redactor, SENSITIVE_NAME_RE
 from .workspace import atomic_write_text
+from .sandbox import python_launcher_rules
 
 
 MAX_SCRIPT_BYTES = 32 * 1024
@@ -141,9 +142,9 @@ class HelperScriptRunner:
         return (
             '(version 1)(deny default)(import "system.sb")'
             "(allow process-exec (literal %s))(allow process-info*)"
-            "(allow file-read* %s)%s"
+            "(allow file-read* %s)%s%s"
             "(deny network*)(deny file-write*)"
-        ) % (_sandbox_literal(self.python_executable), allows, denials)
+        ) % (_sandbox_literal(self.python_executable), allows, python_launcher_rules(self.python_executable), denials)
 
     @staticmethod
     def _environment() -> Dict[str, str]:
