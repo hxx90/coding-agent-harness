@@ -1,0 +1,26 @@
+{
+  "wheel": "agent_harness-2.0.0-py3-none-any.whl",
+  "clean_install": true,
+  "robo_version": "Robo 0.1.0",
+  "bundled_swift_compiled": true,
+  "discovered_camera_names": [
+    "FaceTime高清相机",
+    "OBS Virtual Camera"
+  ],
+  "old_cli_smoke": {
+    "fixture": "real loopback HTTP, deterministic responses",
+    "workspace": "/var/folders/91/8s4wsz217bz3d1c3bml6jhrm0000gn/T/agent-harness-cli-smoke-r1jdddi2/project",
+    "model_requests": 3,
+    "session_id": "97fd95043f354d0293e3616f2a8df955",
+    "status": "completed",
+    "verification": "passed",
+    "file": "counter.py",
+    "before": "value = 1",
+    "after": "value = 2",
+    "events": "/var/folders/91/8s4wsz217bz3d1c3bml6jhrm0000gn/T/agent-harness-cli-smoke-r1jdddi2/events.jsonl"
+  },
+  "camera_capture_started": false,
+  "final_driver_source_sha256": "e38250a9ac5d54b4349d4a0efd8a0a36dc645ca9716b26188b79782c592b601f",
+  "final_wheel_reinstalled": true,
+  "final_bundled_swift_compiled": true
+}

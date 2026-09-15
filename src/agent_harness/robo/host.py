@@ -7,6 +7,7 @@ import os
 import signal
 import socketserver
 import threading
+from contextlib import closing
 from pathlib import Path
 
 from filelock import FileLock, Timeout
@@ -17,12 +18,14 @@ from .client import MAX_WIRE, socket_path
 from .runtime import Runtime
 
 
-def serve(root: Path, *, backend: str = "sim") -> None:
+def serve(root: Path, *, backend: str = "sim", camera: str | None = None) -> None:
     root = root.resolve()
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     try:
-        with FileLock(str(root / "host.lock"), timeout=0):
-            runtime = Runtime(root, backend=backend)
+        with (
+            FileLock(str(root / "host.lock"), timeout=0),
+            closing(Runtime(root, backend=backend, camera=camera)) as runtime,
+        ):
             path = socket_path(root)
             path.unlink(missing_ok=True)
 
@@ -85,7 +88,6 @@ def serve(root: Path, *, backend: str = "sim") -> None:
                 )
                 server.serve_forever(poll_interval=0.1)
             finally:
-                runtime.close()
                 server.server_close()
                 path.unlink(missing_ok=True)
                 for sig, handler in previous.items():

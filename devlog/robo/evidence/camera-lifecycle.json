@@ -1,0 +1,18 @@
+{
+  "passed": true,
+  "tested_at": 1789452322.85572,
+  "device": "FaceTime高清相机",
+  "real_camera": true,
+  "host_crash": {
+    "job_id": "job_13edbcaec8ee463b8b4561587551aaee",
+    "recovered_status": "interrupted",
+    "camera_released": true,
+    "worker_released": true
+  },
+  "graceful_shutdown_camera_released": true,
+  "protection_released_camera": true,
+  "protection_persisted_across_restart": true,
+  "normal_home": "/Users/laihanyu/.robo-camera",
+  "protection_test_home": "Private temporary runtime home; not included in repository",
+  "final_driver_source_sha256": "e38250a9ac5d54b4349d4a0efd8a0a36dc645ca9716b26188b79782c592b601f"
+}

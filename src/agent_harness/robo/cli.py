@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import sys
@@ -60,11 +61,21 @@ def main(argv: list[str] | None = None) -> int:
     host = sub.add_parser(
         "host", help="Run the independent execution host in this terminal"
     )
-    host.add_argument("--backend", choices=["sim", "mhs"], default="sim")
+    host.add_argument("--backend", choices=["sim", "camera", "mhs"], default="sim")
+    host.add_argument(
+        "--camera",
+        help="Native camera UID or exact name; defaults to the single built-in camera",
+    )
+    sub.add_parser(
+        "cameras", help="List native macOS camera UIDs without starting capture"
+    )
     for name in ("devices", "health", "mhs-status", "jobs", "protect"):
         sub.add_parser(name)
     observation = sub.add_parser("observe")
     observation.add_argument("--job-id")
+    observation.add_argument(
+        "--output", type=Path, help="Save this observation as a new PNG file"
+    )
     publish = sub.add_parser("publish")
     publish.add_argument("directory", type=Path)
     publish.add_argument("--manifest", default="program.json")
@@ -95,7 +106,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(arguments)
     try:
         if args.command == "host":
-            serve(args.home, backend=args.backend)
+            serve(args.home, backend=args.backend, camera=args.camera)
+            return 0
+        if args.command == "cameras":
+            from .camera import cameras
+
+            print(json.dumps(cameras(args.home), ensure_ascii=False, indent=2))
             return 0
         if args.command == "mhs-status":
             print(json.dumps(MHS_STATUS, ensure_ascii=False))
@@ -110,7 +126,7 @@ def main(argv: list[str] | None = None) -> int:
         params = {
             k: v
             for k, v in vars(args).items()
-            if k not in {"home", "command", "follow"} and v is not None
+            if k not in {"home", "command", "follow", "output"} and v is not None
         }
         if args.command == "publish":
             params = source_bundle(args.directory, args.directory / args.manifest)
@@ -120,11 +136,16 @@ def main(argv: list[str] | None = None) -> int:
             for update in client.subscribe(args.job_id, args.after):
                 print(json.dumps(update, ensure_ascii=False), flush=True)
             return 0
-        print(
-            json.dumps(
-                client.request(args.command, **params), ensure_ascii=False, indent=2
+        value = client.request(args.command, **params)
+        if args.command == "observe" and args.output:
+            data = base64.b64decode(
+                client.request("media", ref=value["image"])["base64"], validate=True
             )
-        )
+            with args.output.open("xb") as handle:
+                args.output.chmod(0o600)
+                handle.write(data)
+            value["output"] = str(args.output.resolve())
+        print(json.dumps(value, ensure_ascii=False, indent=2))
         return 0
     except (CodingError, ValueError, OSError) as exc:
         print(

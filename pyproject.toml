@@ -34,6 +34,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 agent_harness = ["website_runtime_smoke.js"]
+"agent_harness.robo" = ["native_camera.swift"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/unit", "tests/integration", "tests/cli", "tests/robo"]
@@ -44,7 +45,7 @@ markers = [
 
 [tool.mypy]
 python_version = "3.11"
-files = ["src/agent_harness/coding", "src/agent_harness/robo", "src/agent_harness/cli.py", "src/agent_harness/sandbox.py", "scripts/cli_smoke.py"]
+files = ["src/agent_harness/coding", "src/agent_harness/robo", "src/agent_harness/cli.py", "src/agent_harness/sandbox.py", "scripts/cli_smoke.py", "scripts/robo_camera_smoke.py"]
 check_untyped_defs = true
 disallow_untyped_defs = true
 no_implicit_optional = true

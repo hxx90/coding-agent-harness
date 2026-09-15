@@ -1,0 +1,279 @@
+{
+  "passed": true,
+  "tested_at": 1789452321.3659241,
+  "devices": {
+    "backend": "camera",
+    "simulated": false,
+    "mhs": {
+      "backend": "mhs",
+      "available": false,
+      "sdk_version": null,
+      "spec_version": null,
+      "checked": "2026-09-15",
+      "reason": "Application-only research preview; no public SDK/spec release linked by official sources. Hardware and preview access are required.",
+      "sources": [
+        "https://www.modelhardwarestandard.com/",
+        "https://www.anthropic.com/news/model-hardware-standard-research-preview"
+      ]
+    },
+    "resource": "camera:146fc64e51ae2b2b",
+    "protection_latched": false,
+    "capture_process_running": true,
+    "devices": [
+      {
+        "id": "native-camera",
+        "built_in": true,
+        "device_type": "AVCaptureDeviceTypeBuiltInWideAngleCamera",
+        "model_id": "FaceTime高清相机",
+        "name": "FaceTime高清相机",
+        "uid": "3F45E80A-0176-46F7-B185-BB9E2C0E82E3",
+        "simulated": false,
+        "driver": "robo-avfoundation/0.1",
+        "driver_source_sha256": "e38250a9ac5d54b4349d4a0efd8a0a36dc645ca9716b26188b79782c592b601f",
+        "operations": [
+          "observe"
+        ],
+        "size": [
+          320,
+          180
+        ],
+        "delivery_fps_max": 5.6,
+        "pixel_origin": "top-left",
+        "mirrored": false,
+        "frame": "camera_px",
+        "calibration": "uncalibrated",
+        "audio": false
+      }
+    ]
+  },
+  "trials": [
+    {
+      "job_id": "job_7f5999004d75469291709ce533595cb4",
+      "program_version": "89e214a0f566b7806e4f7dba44b6d30200e93f90b7a287a4cc1edde30c1fa563",
+      "exit_code": 0,
+      "status": "exited",
+      "samples": [
+        {
+          "version": 1,
+          "index": 0,
+          "observation": "obs_da3d9050a38f4402b1a70decd3beae68",
+          "capture_seq": 2,
+          "sampled_at": 1789452315.6686766,
+          "mean_channel_value": 140.1,
+          "dark_frame": false
+        },
+        {
+          "version": 1,
+          "index": 1,
+          "observation": "obs_d9db70f396b7433eb3d1fe7ac0f00689",
+          "capture_seq": 4,
+          "sampled_at": 1789452316.0688767,
+          "mean_channel_value": 145.63,
+          "dark_frame": false
+        },
+        {
+          "version": 1,
+          "index": 2,
+          "observation": "obs_a97279eed20d4171933eea26576ae1c0",
+          "capture_seq": 6,
+          "sampled_at": 1789452316.4690773,
+          "mean_channel_value": 148.8,
+          "dark_frame": false
+        },
+        {
+          "version": 1,
+          "index": 3,
+          "observation": "obs_1dcdfdb5116a483e80adb4b306214b99",
+          "capture_seq": 7,
+          "sampled_at": 1789452316.6691768,
+          "mean_channel_value": 149.74,
+          "dark_frame": false
+        },
+        {
+          "version": 1,
+          "index": 4,
+          "observation": "obs_6af1f922aec740c9a5700faead73366a",
+          "capture_seq": 9,
+          "sampled_at": 1789452317.0693767,
+          "mean_channel_value": 150.46,
+          "dark_frame": false
+        }
+      ],
+      "physical_verification": {
+        "capture_verification": {
+          "capture_time_known": true,
+          "frames": 3,
+          "method": "fresh-distinct-camera-frames",
+          "status": "succeeded"
+        },
+        "goal": {
+          "method": "camera-acquisition-window-v1",
+          "sample_interval_s": 0.02,
+          "samples": 3
+        },
+        "job_id": "job_7f5999004d75469291709ce533595cb4",
+        "method": "camera-acquisition-window-v1",
+        "observations": [
+          "obs_e5660c44733e47389977e1c0490b83bf",
+          "obs_d7e211f129e94e4692e426a1772fdf5f",
+          "obs_910b10ad928a4237a77144e04fcd7b31"
+        ],
+        "program_version": "89e214a0f566b7806e4f7dba44b6d30200e93f90b7a287a4cc1edde30c1fa563",
+        "reason": "No physical scene predicate is configured for this camera-only job",
+        "simulated": false,
+        "status": "unknown",
+        "window": [
+          1789452317.2694743,
+          1789452317.6696768
+        ]
+      },
+      "reconnected": true,
+      "version_isolated": true
+    },
+    {
+      "job_id": "job_13c988973d99430e906611cd14abb178",
+      "program_version": "5f85cbfdd6bebeb7ac9f4f08a87d8a28cae7335f80ff245729b59c451ebbb0e4",
+      "exit_code": 0,
+      "status": "exited",
+      "samples": [
+        {
+          "version": 2,
+          "index": 0,
+          "observation": "obs_4a90657a2a354fefb27b86b76bc647d8",
+          "capture_seq": 14,
+          "sampled_at": 1789452318.069873,
+          "mean_channel_value": 150.96,
+          "dark_frame": false
+        },
+        {
+          "version": 2,
+          "index": 1,
+          "observation": "obs_3830777ba73c471c8f4ee0a5085e541b",
+          "capture_seq": 15,
+          "sampled_at": 1789452318.2699773,
+          "mean_channel_value": 150.48,
+          "dark_frame": false
+        },
+        {
+          "version": 2,
+          "index": 2,
+          "observation": "obs_97d2792cc9f348c5bb49fe9adfcf8826",
+          "capture_seq": 17,
+          "sampled_at": 1789452318.670178,
+          "mean_channel_value": 150.38,
+          "dark_frame": false
+        },
+        {
+          "version": 2,
+          "index": 3,
+          "observation": "obs_93960638eb144674a047d8a9f95928bc",
+          "capture_seq": 18,
+          "sampled_at": 1789452318.8702786,
+          "mean_channel_value": 150.51,
+          "dark_frame": false
+        },
+        {
+          "version": 2,
+          "index": 4,
+          "observation": "obs_c6d60cf9693e4e19863bd98f0f988a38",
+          "capture_seq": 20,
+          "sampled_at": 1789452319.270478,
+          "mean_channel_value": 150.62,
+          "dark_frame": false
+        }
+      ],
+      "physical_verification": {
+        "capture_verification": {
+          "capture_time_known": true,
+          "frames": 3,
+          "method": "fresh-distinct-camera-frames",
+          "status": "succeeded"
+        },
+        "goal": {
+          "method": "camera-acquisition-window-v1",
+          "sample_interval_s": 0.02,
+          "samples": 3
+        },
+        "job_id": "job_13c988973d99430e906611cd14abb178",
+        "method": "camera-acquisition-window-v1",
+        "observations": [
+          "obs_d74ade7990a34cec9d5cf782d1d06014",
+          "obs_279aeb2dfe4544e484d5d7f909fcd6f1",
+          "obs_e23105b4ae2f48b89d3c410019bd3887"
+        ],
+        "program_version": "5f85cbfdd6bebeb7ac9f4f08a87d8a28cae7335f80ff245729b59c451ebbb0e4",
+        "reason": "No physical scene predicate is configured for this camera-only job",
+        "simulated": false,
+        "status": "unknown",
+        "window": [
+          1789452319.6706777,
+          1789452320.0708783
+        ]
+      },
+      "reconnected": true,
+      "version_isolated": true
+    }
+  ],
+  "cancellation": {
+    "job_id": "job_761fec35f9584bc3bd82f5e139b21597",
+    "status": "cancelled",
+    "stop_confirmation": {
+      "capture_process_running": true,
+      "confirmed_at": 1789452320.58625,
+      "operation": "observation-access-revoked",
+      "protection_latched": false,
+      "simulated": false,
+      "status": "confirmed"
+    }
+  },
+  "preview": "Local-only PNG retained in runtime home; not included in repository",
+  "preview_metadata": {
+    "backend": "camera",
+    "calibration": {
+      "extrinsics": null,
+      "id": "uncalibrated:camera:146fc64e51ae2b2b",
+      "intrinsics": null,
+      "status": "uncalibrated"
+    },
+    "capture_seq": 24,
+    "capture_session": "c0ad7f051c484a3bbf28f627b3c9f06f",
+    "clock": "avfoundation-host-clock",
+    "clock_mapping_valid": true,
+    "device_revision": 0,
+    "device_uid": "3F45E80A-0176-46F7-B185-BB9E2C0E82E3",
+    "driver": "robo-avfoundation/0.1",
+    "driver_received_at": 1789452320.141814,
+    "driver_source_sha256": "e38250a9ac5d54b4349d4a0efd8a0a36dc645ca9716b26188b79782c592b601f",
+    "frame": "camera_px",
+    "id": "obs_e23105b4ae2f48b89d3c410019bd3887",
+    "job_id": "job_13c988973d99430e906611cd14abb178",
+    "pixel_origin": "top-left",
+    "program_version": "5f85cbfdd6bebeb7ac9f4f08a87d8a28cae7335f80ff245729b59c451ebbb0e4",
+    "quality": "valid",
+    "received_at": 1789452320.1572108,
+    "sampled_at": 1789452320.0708783,
+    "seq": 71,
+    "simulated": false,
+    "source": "native-camera",
+    "source_pts_s": 4058622.72185,
+    "state": {
+      "height": 180,
+      "mean_rgb": [
+        164.851,
+        152.164,
+        135.595
+      ],
+      "pixel_max": 255,
+      "pixel_min": 2,
+      "protected": false,
+      "source_height": 1080,
+      "source_width": 1920,
+      "width": 320
+    },
+    "sync_error_s": null,
+    "timestamp_kind": "avfoundation-host-clock-mapped",
+    "unit": "pixel"
+  },
+  "provider_image_serialization": "passed locally; no model request sent",
+  "mhs_integrated": false
+}

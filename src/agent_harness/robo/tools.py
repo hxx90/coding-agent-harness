@@ -21,17 +21,23 @@ POLICY = """
 Robo — A runtime for agents that act in the physical world.
 The host is independent of this conversation. Local programs use camera pixels
 and the injected robo SDK for feedback; model thinking is not the control clock.
-This installation supports the simulated camera/stage only, not real MHS.
+Discover the active backend: sim is a simulated camera/stage; camera is a real
+macOS AVFoundation camera, observation-only. Neither is an MHS integration.
+Native camera pixels are uncalibrated: do not infer metric motion or assume a
+scene goal from successful acquisition. No microphone is captured. Host capture
+continues while the host runs; cancelling a job revokes that job's access.
 Discover devices and inspect a fresh observation before submitting a program.
 Use the existing read/write/edit/apply_patch tools to develop source files.
 ProgramVersion freezes all declared Python files, the SDK and Python libraries.
 No ambient site packages: vendor Python dependencies and list every source file.
-Manifests need entrypoint, files, dependencies={}, devices (sim-camera: observe;
-sim-stage: move/query), bounded numeric parameters, and limits. Host ceilings
-cannot be raised by the manifest. Goal is simulated alignment to (0,0) mm with
-error <=1 mm over 3 independent samples; the model cannot change the validator.
+Manifests need entrypoint, files, dependencies={}, devices using discovered IDs
+(native-camera: observe; or sim-camera: observe and sim-stage: move/query), bounded
+numeric parameters, and limits. Host ceilings cannot be raised by the manifest.
+The sim validator checks alignment to (0,0) mm with error <=1 mm over 3 samples.
+The native camera validator checks distinct fresh frames; physical scene success
+remains unknown until a separate scene predicate is implemented.
 Generated code uses injected `robo`: parameters, discover(), observe(),
-centroid(observation)->(x,y) in image pixels (target 32,32),
+centroid(observation)->(x,y) finds a simple red marker (sim target is 32,32),
 move(dx,dy,based_on=observation['id'],command_id=stable_id,speed=5),
 query(command_id), log(text), sleep(seconds). Moves are bounded to 4 mm per axis.
 Every motion needs a fresh observation from that job. If motion is unknown,

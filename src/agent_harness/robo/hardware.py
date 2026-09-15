@@ -12,6 +12,7 @@ import struct
 import time
 import uuid
 import zlib
+from typing import ClassVar, Protocol
 
 from agent_harness.coding.media import MediaStore
 from agent_harness.coding.types import CodingError, Json
@@ -52,12 +53,48 @@ def png(width: int, height: int, rgb: bytes) -> bytes:
     )
 
 
+class Hardware(Protocol):
+    backend: str
+    simulated: bool
+    resource: str
+    calibration_id: str
+    operation_devices: ClassVar[dict[str, str]]
+    grants: ClassVar[Json]
+    goal: ClassVar[Json]
+    state: Json
+
+    def discover(self) -> Json: ...
+    def observe(self, job: Json | None = None) -> Json: ...
+    def evaluate(self, samples: list[Json], job: Json) -> Json: ...
+    def move(self, dx: float, dy: float, speed: float) -> Json: ...
+    def stop(self, *, protect: bool = False) -> Json: ...
+    def close(self) -> None: ...
+
+
 class SimHardware:
     """One simulated workcell; position is persistent, motion is instantaneous.
 
     A shared workcell resource also protects the camera/target/stage relationship.
     Real motion, stop latency, clock synchronization and calibration are untested.
     """
+
+    backend = "sim"
+    simulated = True
+    resource = "sim-workcell"
+    calibration_id = "sim-cal-v1"
+    operation_devices: ClassVar[dict[str, str]] = {
+        "observe": "sim-camera",
+        "move": "sim-stage",
+        "query": "sim-stage",
+    }
+    grants: ClassVar[Json] = {"sim-camera": ["observe"], "sim-stage": ["move", "query"]}
+    goal: ClassVar[Json] = {
+        "method": "sim-encoder-window-v1",
+        "target_mm": [0, 0],
+        "tolerance_mm": 1,
+        "samples": 3,
+        "sample_interval_s": 0.02,
+    }
 
     def __init__(self, store: Store, media: MediaStore) -> None:
         self.store, self.media = store, media
@@ -185,3 +222,20 @@ class SimHardware:
             "protection_latched": self.state["protected"],
             "confirmed_at": time.time(),
         }
+
+    def evaluate(self, samples: list[Json], job: Json) -> Json:
+        distances = [
+            math.hypot(o["state"]["x_mm"], o["state"]["y_mm"]) for o in samples
+        ]
+        valid = all(o["quality"] == "valid" for o in samples)
+        status = (
+            "unknown"
+            if not valid
+            else "succeeded"
+            if max(distances) <= job["goal"]["tolerance_mm"]
+            else "failed"
+        )
+        return {"status": status, "max_error_mm": max(distances)}
+
+    def close(self) -> None:
+        pass

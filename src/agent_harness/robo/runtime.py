@@ -19,7 +19,7 @@ from pathlib import Path
 from agent_harness.coding.media import MediaStore
 from agent_harness.coding.types import CodingError, Json
 
-from .hardware import MHS_STATUS, SimHardware
+from .hardware import MHS_STATUS, Hardware, SimHardware
 from .programs import Programs
 from .store import Store, digest
 
@@ -61,18 +61,54 @@ def number(value: object, name: str, minimum: float, maximum: float) -> float:
 
 
 class Runtime:
-    def __init__(self, root: Path, *, backend: str = "sim") -> None:
-        if backend != "sim":
+    def __init__(
+        self, root: Path, *, backend: str = "sim", camera: str | None = None
+    ) -> None:
+        if backend not in {"sim", "camera"}:
             raise CodingError(
                 "mhs_unavailable", MHS_STATUS["reason"], details=MHS_STATUS
             )
+        if camera is not None and backend != "camera":
+            raise CodingError("invalid_backend", "--camera requires --backend camera")
         self.store = Store(root)
         self.media = MediaStore(root / "media")
-        self.hardware = SimHardware(self.store, self.media)
-        self.programs = Programs(self.store)
+        self.hardware: Hardware
         self.condition = threading.Condition(threading.RLock())
         self.workers: dict[str, tuple[threading.Thread, threading.Event]] = {}
         self.closing = False
+        try:
+            identities = self.store.all("runtime")
+            identity = identities[0] if identities else None
+            # Pre-camera stores belong to the original simulated workcell.
+            if identity is None and (self.store.all("job") or self.store.all("device")):
+                identity = {"backend": "sim", "resource": "sim-workcell"}
+            if identity and identity["backend"] != backend:
+                raise CodingError(
+                    "device_identity",
+                    "This home belongs to another backend; use a separate --home",
+                )
+            if backend == "camera":
+                from .camera import CameraHardware
+
+                self.hardware = CameraHardware(self.store, self.media, camera)
+            else:
+                self.hardware = SimHardware(self.store, self.media)
+            current = {"backend": backend, "resource": self.hardware.resource}
+            if identity and identity != current:
+                raise CodingError(
+                    "device_identity",
+                    "This home belongs to another device; use a separate --home",
+                )
+            self.store.put("runtime", "identity", current, immutable=True)
+            self.programs = Programs(self.store)
+            self._recover()
+        except BaseException:
+            if hasattr(self, "hardware"):
+                self.hardware.close()
+            self.store.db.close()
+            raise
+
+    def _recover(self) -> None:
         # The gateway is fenced on host death: workers possess only old pipes.
         # Restart never resumes a program or dispatches an old command.
         for job in self.store.all("job"):
@@ -87,7 +123,12 @@ class Runtime:
                     },
                 )
                 self.store.put("job", job["id"], job)
-                self.store.event(job, "host_recovered", observation=self._observe(job))
+                try:
+                    self.store.event(
+                        job, "host_recovered", observation=self._observe(job)
+                    )
+                except CodingError as exc:
+                    self.store.event(job, "host_recovered", observation_error=str(exc))
             with self.condition:
                 self._reconcile(job)
 
@@ -108,8 +149,8 @@ class Runtime:
             if op == "health":
                 return {
                     "status": "ready",
-                    "backend": "sim",
-                    "simulated": True,
+                    "backend": self.hardware.backend,
+                    "simulated": self.hardware.simulated,
                     "protocol": 1,
                     "mhs": MHS_STATUS,
                 }
@@ -123,8 +164,9 @@ class Runtime:
                     )
                 return {
                     "sampled_at": time.time(),
-                    "source": "sim-state",
-                    "simulated": True,
+                    "source": self.hardware.backend + "-adapter-state",
+                    "backend": self.hardware.backend,
+                    "simulated": self.hardware.simulated,
                     "device_state": dict(self.hardware.state),
                     "jobs": [
                         {
@@ -228,12 +270,13 @@ class Runtime:
             for job in self.store.all("job")
         ):
             raise CodingError(
-                "resource_busy", "sim-workcell is owned or stop remains unconfirmed"
+                "resource_busy",
+                self.hardware.resource + " is owned or stop remains unconfirmed",
             )
         program = self.store.get("program", args["program_version"])
         manifest = program["manifest"]
         grants = manifest.get("devices")
-        allowed = {"sim-camera": ["observe"], "sim-stage": ["move", "query"]}
+        allowed = self.hardware.grants
         if (
             not isinstance(grants, dict)
             or not grants
@@ -288,7 +331,9 @@ class Runtime:
             "parameters": parameters,
             "devices": grants,
             "limits": limits,
-            "resource": "sim-workcell",
+            "resource": self.hardware.resource,
+            "backend": self.hardware.backend,
+            "hardware": self.hardware.discover(),
             "based_on": observation["id"],
             "disconnect_policy": policy,
             "client_deadline": now + 5,
@@ -300,14 +345,8 @@ class Runtime:
                 "status": "unknown",
                 "reason": "not yet observed after execution",
             },
-            "goal": {
-                "method": "sim-encoder-window-v1",
-                "target_mm": [0, 0],
-                "tolerance_mm": 1,
-                "samples": 3,
-                "sample_interval_s": 0.02,
-            },
-            "simulated": True,
+            "goal": dict(self.hardware.goal),
+            "simulated": self.hardware.simulated,
         }
         # Request mapping precedes any worker/device effects. A lost submit reply
         # is resolved with lookup(request_id), never by inventing another ID.
@@ -321,12 +360,13 @@ class Runtime:
         thread.start()
         return job
 
-    @staticmethod
-    def _fresh(observation: Json, maximum_age: float) -> None:
+    def _fresh(self, observation: Json, maximum_age: float) -> None:
         age = time.time() - observation["sampled_at"]
         if (
             observation["quality"] != "valid"
-            or observation["calibration"]["id"] != "sim-cal-v1"
+            or observation.get("clock_mapping_valid", True) is False
+            or observation["calibration"]["id"] != self.hardware.calibration_id
+            or observation["source"] != self.hardware.operation_devices["observe"]
             or not 0 <= age <= maximum_age
         ):
             raise CodingError(
@@ -379,13 +419,14 @@ class Runtime:
             if counts["events"] > limits["max_events"]:
                 raise CodingError("resource_limit", "Event budget exhausted")
             self._save(job)
-            device = {
-                "observe": "sim-camera",
-                "move": "sim-stage",
-                "query": "sim-stage",
-            }.get(op)
-            if device and op not in job["devices"].get(device, []):
-                raise CodingError("device_grant", f"No {device}.{op} grant")
+            device = self.hardware.operation_devices.get(op)
+            if op in {"observe", "move", "query"} and (
+                device is None or op not in job["devices"].get(device, [])
+            ):
+                raise CodingError(
+                    "device_grant",
+                    f"No {device}.{op} grant" if device else f"No device supports {op}",
+                )
             if op == "devices":
                 return self.hardware.discover()
             if op == "observe":
@@ -677,26 +718,14 @@ class Runtime:
         for _ in range(job["goal"]["samples"]):
             samples.append(self._observe(job))
             time.sleep(job["goal"]["sample_interval_s"])
-        valid = all(o["quality"] == "valid" for o in samples)
-        distances = [
-            math.hypot(o["state"]["x_mm"], o["state"]["y_mm"]) for o in samples
-        ]
-        status = (
-            "unknown"
-            if not valid
-            else "succeeded"
-            if max(distances) <= job["goal"]["tolerance_mm"]
-            else "failed"
-        )
         value: Json = {
-            "status": status,
+            **self.hardware.evaluate(samples, job),
             "job_id": job["id"],
             "program_version": job["program_version"],
             "method": job["goal"]["method"],
             "goal": job["goal"],
-            "simulated": True,
+            "simulated": self.hardware.simulated,
             "observations": [o["id"] for o in samples],
-            "max_error_mm": max(distances),
             "window": [samples[0]["sampled_at"], samples[-1]["sampled_at"]],
         }
         self.store.put("verification", job["id"], value)
@@ -709,4 +738,5 @@ class Runtime:
                 self.cancel(key)
         for thread, _ in self.workers.values():
             thread.join(timeout=10)
+        self.hardware.close()
         self.store.db.close()

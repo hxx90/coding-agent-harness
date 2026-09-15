@@ -7,7 +7,7 @@ import time
 import uuid
 from pathlib import Path
 
-from agent_harness.coding.types import Json
+from agent_harness.coding.types import CodingError, Json
 
 from .client import Client
 from .programs import source_bundle
@@ -71,6 +71,11 @@ def wait_job(client: Client, job_id: str) -> Json:
 def demo(root: Path) -> Json:
     client = Client(root)
     discovered = client.request("devices")
+    if discovered["backend"] != "sim":
+        raise CodingError(
+            "demo_backend",
+            "robo demo requires the simulated XY workcell; use examples/robo/camera for a native camera job",
+        )
     directory = root / "demo-workspace" / uuid.uuid4().hex[:8]
     directory.mkdir(parents=True)
     (directory / "program.json").write_text(json.dumps(MANIFEST, indent=2))
