@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import copy
 import json
+import os
+import socket
+import subprocess
 import time
 import uuid
 
 import pytest
 
 from agent_harness.coding.types import CodingError
+from agent_harness.robo.client import socket_path
 from agent_harness.robo.demo import MANIFEST, demo, wait_job
 from agent_harness.robo.programs import source_bundle
 
@@ -129,6 +133,20 @@ def test_timeout_even_when_program_closes_pipes_and_lease_loss(host):
     assert final["finished_at"] - final["created_at"] < 3
     version = publish(client, "robo.sleep(12)\n")
     job = submit(client, version, disconnect_policy="cancel")
+    with socket.socket(socket.AF_UNIX) as connection:
+        connection.connect(str(socket_path(client.root)))
+        connection.sendall(
+            (
+                json.dumps(
+                    {
+                        "protocol": 1,
+                        "op": "events",
+                        "args": {"job_id": job["id"], "after": 10**12, "wait": 10},
+                    }
+                )
+                + "\n"
+            ).encode()
+        )
     time.sleep(5.4)  # Abrupt client loss: no event subscription renews the lease.
     final = wait_job(client, job["id"])
     assert final["status"] == "cancelled"
@@ -142,8 +160,23 @@ def test_host_crash_never_replays_motion(host):
         if any(e["type"] == "action_result" for e in update["events"]):
             break
     before = client.request("observe")["state"]
+    worker_pid = client.request("status", job_id=job["id"])["pid"]
     process.kill()
     process.wait(timeout=3)
+    deadline = time.monotonic() + 1
+    while time.monotonic() < deadline:
+        state = subprocess.run(
+            ["/bin/ps", "-o", "stat=", "-p", str(worker_pid)],
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout.strip()
+        if not state or state.startswith("Z"):
+            break
+        time.sleep(0.02)
+    else:
+        os.kill(worker_pid, 9)
+        pytest.fail("Worker survived host death")
     client, _ = start()
     recovered = client.request("status", job_id=job["id"])
     assert recovered["status"] == "interrupted"
@@ -284,3 +317,22 @@ def test_program_integrity_and_mhs_fail_closed(host):
 
     with pytest.raises(CodingError, match="Application-only"):
         Runtime(client.root / "mhs", backend="mhs")
+
+
+def test_handover_reconciles_unknown_action_before_new_job(host):
+    client, _, _ = host
+    source = 'o=robo.observe()\nrobo.move(-1,0,based_on=o["id"],command_id="lost",lose_ack=True)\n'
+    first = wait_job(client, submit(client, publish(client, source))["id"])
+    assert "uncertain_action" not in first
+    assert (
+        client.request("action", job_id=first["id"], command_id="lost")["status"]
+        == "confirmed"
+    )
+    second = wait_job(client, submit(client, publish(client, source))["id"])
+    reconciled = next(
+        e for e in events(client, first["id"]) if e["type"] == "action_reconciled"
+    )
+    dispatched = next(
+        e for e in events(client, second["id"]) if e["type"] == "action_intent"
+    )
+    assert reconciled["seq"] < dispatched["seq"]

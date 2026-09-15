@@ -113,7 +113,7 @@ class CodingSession:
                 from agent_harness.robo.tools import recover_submission
 
                 outcome = recover_submission(
-                    self.settings.robo_home, pending_call, reason
+                    self.settings.robo_home, pending_call, reason, self.stop, self.state
                 )
             self.state["messages"].append(
                 {
@@ -252,7 +252,7 @@ class CodingSession:
                         "Task request or token budget exhausted; resume the session to continue",
                     )
                 messages, compacted = request_messages(
-                    self.redactor.text(system),
+                    self.redactor.text(system + tools.request_context()),
                     self.state["messages"],
                     self.settings.context_chars,
                     force=bool(self.state.pop("compact_next", False)),

@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
-import socket
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 
+from agent_harness.coding.provider import interruptible
 from agent_harness.coding.types import CodingError, Json
 
 from .runtime import TERMINAL
@@ -34,8 +36,9 @@ def socket_path(root: Path) -> Path:
 
 
 class Client:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, stop: threading.Event | None = None) -> None:
         self.root = root.resolve()
+        self.stop = stop or threading.Event()
 
     def request(self, op: str, **args: object) -> Json:
         data = (
@@ -43,16 +46,25 @@ class Client:
         ).encode()
         if len(data) > MAX_WIRE:
             raise CodingError("request_limit", "Robo request exceeds 4 MiB")
-        try:
-            with socket.socket(socket.AF_UNIX) as connection:
-                connection.settimeout(20)
-                connection.connect(str(socket_path(self.root)))
-                connection.sendall(data)
-                with connection.makefile("rb") as reader:
-                    line = reader.readline(MAX_WIRE + 1)
+
+        async def exchange() -> Json:
+            async with asyncio.timeout(20):
+                reader, writer = await asyncio.open_unix_connection(
+                    str(socket_path(self.root)), limit=MAX_WIRE
+                )
+                try:
+                    writer.write(data)
+                    await writer.drain()
+                    line = await reader.readline()
                     if len(line) > MAX_WIRE or not line.endswith(b"\n"):
                         raise ValueError("invalid or incomplete host response")
-                    response = json.loads(line)
+                    return dict(json.loads(line))
+                finally:
+                    writer.close()
+                    await writer.wait_closed()
+
+        try:
+            response = asyncio.run(interruptible(exchange(), self.stop))
         except (OSError, ValueError) as exc:
             raise CodingError(
                 "host_unavailable",
@@ -60,7 +72,7 @@ class Client:
             ) from exc
         if "error" in response:
             raise CodingError(
-                response["error"], response.get("message", response["error"])
+                str(response["error"]), str(response.get("message", response["error"]))
             )
         return dict(response["result"])
 

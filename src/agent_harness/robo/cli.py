@@ -10,6 +10,7 @@ from pathlib import Path
 
 from agent_harness.coding.types import CodingError
 
+from . import __version__
 from .client import Client
 from .hardware import MHS_STATUS
 from .host import serve
@@ -26,10 +27,18 @@ def default_root() -> Path:
 
 def main(argv: list[str] | None = None) -> int:
     arguments = sys.argv[1:] if argv is None else argv
-    if arguments and arguments[0] in {"run", "chat"}:
+    agent_arguments = arguments
+    agent_home = default_root()
+    if len(arguments) >= 2 and arguments[0] == "--home":
+        agent_home = Path(arguments[1]).expanduser().resolve()
+        agent_arguments = arguments[2:]
+    elif arguments and arguments[0].startswith("--home="):
+        agent_home = Path(arguments[0].split("=", 1)[1]).expanduser().resolve()
+        agent_arguments = arguments[1:]
+    if agent_arguments and agent_arguments[0] in {"run", "chat"}:
         from agent_harness.cli import main as agent_main
 
-        return agent_main([*arguments, "--robo-home", str(default_root())])
+        return agent_main([*agent_arguments, "--robo-home", str(agent_home)])
     parser = argparse.ArgumentParser(
         prog="robo",
         description="Robo — A runtime for agents that act in the physical world",
@@ -40,7 +49,14 @@ def main(argv: list[str] | None = None) -> int:
         default=default_root(),
         help="Persistent host directory (or ROBO_HOME)",
     )
+    parser.add_argument("--version", action="version", version="Robo " + __version__)
     sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser(
+        "run", help="Run an agent task with Robo tools (provider options follow run)"
+    )
+    sub.add_parser(
+        "chat", help="Interactive agent with Robo tools (provider options follow chat)"
+    )
     host = sub.add_parser(
         "host", help="Run the independent execution host in this terminal"
     )

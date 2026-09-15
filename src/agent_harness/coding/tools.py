@@ -167,6 +167,7 @@ class ToolSet:
         self.validation: Json | None = None
         self.validated_snapshot: Json | None = None
         self.observe: Callable[[str, Callable[[], Json]], Json] | None = None
+        self.request_context: Callable[[], str] = lambda: ""
 
     def register(self, tool: ExtraTool) -> None:
         name = tool.definition["function"]["name"]

@@ -105,3 +105,11 @@ class Store:
             ).fetchall()
         events = [{**json.loads(body), "seq": seq} for seq, body in rows]
         return {"events": events, "cursor": rows[-1][0] if rows else after}
+
+    def cursor(self, job_id: str) -> int:
+        with self.lock:
+            return int(
+                self.db.execute(
+                    "SELECT COALESCE(MAX(seq),0) FROM events WHERE job_id=?", (job_id,)
+                ).fetchone()[0]
+            )

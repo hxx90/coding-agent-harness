@@ -88,6 +88,8 @@ class Runtime:
                 )
                 self.store.put("job", job["id"], job)
                 self.store.event(job, "host_recovered", observation=self._observe(job))
+            with self.condition:
+                self._reconcile(job)
 
     def _observe(self, job: Json | None = None) -> Json:
         value = self.hardware.observe(job)
@@ -113,6 +115,39 @@ class Runtime:
                 }
             if op == "devices":
                 return self.hardware.discover()
+            if op == "snapshot":
+                keys = args.get("job_ids", [])
+                if not isinstance(keys, list) or len(keys) > 8:
+                    raise CodingError(
+                        "invalid_arguments", "snapshot accepts up to eight jobs"
+                    )
+                return {
+                    "sampled_at": time.time(),
+                    "source": "sim-state",
+                    "simulated": True,
+                    "device_state": dict(self.hardware.state),
+                    "jobs": [
+                        {
+                            "event_cursor": self.store.cursor(key),
+                            **{
+                                k: v
+                                for k, v in self._job(key).items()
+                                if k
+                                in {
+                                    "id",
+                                    "program_version",
+                                    "status",
+                                    "deadline",
+                                    "stop_confirmation",
+                                    "physical_verification",
+                                    "uncertain_action",
+                                    "counts",
+                                }
+                            },
+                        }
+                        for key in keys
+                    ],
+                }
             if op == "observe":
                 return self._observe(
                     self._job(args["job_id"]) if args.get("job_id") else None
@@ -178,6 +213,14 @@ class Runtime:
         if self.closing or self.hardware.state["protected"]:
             raise CodingError(
                 "unavailable", "Host stopping or device protection latched"
+            )
+        if any(
+            action["status"] in {"unknown", "dispatching"}
+            for action in self.store.all("action")
+        ):
+            raise CodingError(
+                "reconciliation_required",
+                "An earlier job has an unresolved action; query it before transferring control",
             )
         if any(
             job["status"] not in TERMINAL
@@ -296,12 +339,14 @@ class Runtime:
         after = int(number(args.get("after", 0), "after", 0, 1e15))
         wait = number(args.get("wait", 0), "wait", 0, 10)
         deadline = time.monotonic() + wait
+        job = self._job(job_id)
+        if job["disconnect_policy"] == "cancel" and job["status"] not in TERMINAL:
+            # Server wakeups cannot renew a disconnected client's lease.
+            job["client_deadline"] = time.time() + 5
+            self._save(job)
+            deadline = min(deadline, time.monotonic() + 4)
         while True:
             job = self._job(job_id)
-            # Only the subscription owner/agent polls renew the cancel lease.
-            if job["disconnect_policy"] == "cancel" and job["status"] not in TERMINAL:
-                job["client_deadline"] = time.time() + 5
-                self._save(job)
             value = self.store.events(job_id, after)
             if (
                 value["events"]
@@ -454,6 +499,8 @@ class Runtime:
         status = "failed"
         error: str | None = None
         stderr = bytearray()
+        live_read: int | None = None
+        live_write: int | None = None
         try:
             with self.condition:
                 job = self._job(key)
@@ -461,6 +508,7 @@ class Runtime:
                     status = "cancelled"
                     return
                 program = self.store.get("program", job["program_version"])
+                live_read, live_write = os.pipe()
                 command = self.programs.command(
                     program,
                     {
@@ -468,6 +516,7 @@ class Runtime:
                         "program_version": program["id"],
                         "parameters": job["parameters"],
                         "limits": job["limits"],
+                        "liveness_fd": live_read,
                     },
                 )
                 process = subprocess.Popen(
@@ -478,7 +527,10 @@ class Runtime:
                     cwd=self.store.root,
                     env={"PATH": "/usr/bin:/bin", "LANG": "en_US.UTF-8"},
                     start_new_session=True,
+                    pass_fds=(live_read,),
                 )
+                os.close(live_read)
+                live_read = None
                 job.update(status="running", started_at=time.time(), pid=process.pid)
                 self.store.event(job, "started", pid=process.pid)
                 self._save(job)
@@ -565,6 +617,10 @@ class Runtime:
         except Exception as exc:  # noqa: BLE001 -- supervisor must stop devices on every failure
             error = f"{type(exc).__name__}: {exc}"
         finally:
+            if live_read is not None:
+                os.close(live_read)
+            if live_write is not None:
+                os.close(live_write)
             if process is not None:
                 try:
                     os.killpg(process.pid, signal.SIGKILL)
@@ -592,6 +648,7 @@ class Runtime:
                     )
                 self.store.event(job, "stop_confirmed", confirmation=confirmation)
                 try:
+                    self._reconcile(job)
                     job["physical_verification"] = self._verify(job)
                 except Exception as exc:  # noqa: BLE001 -- supervisor must stop devices on every failure
                     job["physical_verification"] = {
@@ -606,6 +663,14 @@ class Runtime:
                     physical_verification=job["physical_verification"],
                 )
                 self._save(job)
+
+    def _reconcile(self, job: Json) -> None:
+        for action in self.store.all("action"):
+            if action["job_id"] == job["id"] and action["status"] in {
+                "unknown",
+                "dispatching",
+            }:
+                self._action(job, "query", {"command_id": action["command_id"]})
 
     def _verify(self, job: Json) -> Json:
         samples = []

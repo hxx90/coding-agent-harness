@@ -1,0 +1,110 @@
+{
+  "simulated": true,
+  "mhs_integrated": false,
+  "devices": [
+    {
+      "id": "sim-camera",
+      "driver": "robo-sim/0.1",
+      "operations": [
+        "observe"
+      ],
+      "frame": "camera_px",
+      "calibration": "sim-cal-v1",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "id": "sim-stage",
+      "driver": "robo-sim/0.1",
+      "operations": [
+        "move",
+        "query",
+        "stop"
+      ],
+      "unit": "mm",
+      "frame": "stage_xy",
+      "travel": [
+        -24,
+        24
+      ],
+      "max_step_mm": 4,
+      "max_speed_mm_s": 10,
+      "completion": "instantaneous simulated displacement"
+    }
+  ],
+  "workspace": "/tmp/robo-final-wheel-20260915/demo-workspace/e69a4458",
+  "trials": [
+    {
+      "trial": "wrong-direction",
+      "program_version": "0da5332de18682d5899091ef5566c9553b64db216884410b491d472a9d2ad9c4",
+      "job_id": "job_6dbfddf77b704b40a173fcee41b73ceb",
+      "execution": "exited",
+      "exit_code": 0,
+      "physical_verification": {
+        "goal": {
+          "method": "sim-encoder-window-v1",
+          "sample_interval_s": 0.02,
+          "samples": 3,
+          "target_mm": [
+            0,
+            0
+          ],
+          "tolerance_mm": 1
+        },
+        "job_id": "job_6dbfddf77b704b40a173fcee41b73ceb",
+        "max_error_mm": 21.633307652783937,
+        "method": "sim-encoder-window-v1",
+        "observations": [
+          "obs_f1b5be46ba2d4e9b9fd87a060a7f7641",
+          "obs_35bb222e2b5c4a198b17ecd16ee7f658",
+          "obs_8818e7b72cd24b64942baf582b3033f6"
+        ],
+        "program_version": "0da5332de18682d5899091ef5566c9553b64db216884410b491d472a9d2ad9c4",
+        "simulated": true,
+        "status": "failed",
+        "window": [
+          1789448748.067752,
+          1789448748.11534
+        ]
+      }
+    },
+    {
+      "trial": "repaired",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "execution": "exited",
+      "exit_code": 0,
+      "physical_verification": {
+        "goal": {
+          "method": "sim-encoder-window-v1",
+          "sample_interval_s": 0.02,
+          "samples": 3,
+          "target_mm": [
+            0,
+            0
+          ],
+          "tolerance_mm": 1
+        },
+        "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+        "max_error_mm": 0.18027756377319903,
+        "method": "sim-encoder-window-v1",
+        "observations": [
+          "obs_cefdd213dd9342208be741a25788bf39",
+          "obs_ffe93b6e22624ff391fc68d9b5b5b5ef",
+          "obs_142bb7719bdc4e45900acdb597ee770e"
+        ],
+        "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+        "simulated": true,
+        "status": "succeeded",
+        "window": [
+          1789448748.900245,
+          1789448748.949666
+        ]
+      }
+    }
+  ],
+  "finished_at": 1789448748.977876,
+  "passed": true
+}

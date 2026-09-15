@@ -1,0 +1,14 @@
+Looking in indexes: https://pypi.tuna.tsinghua.edu.cn/simple
+Processing /tmp/robo-release-20260915/agent_harness-2.0.0-py3-none-any.whl
+Installing collected packages: agent-harness
+  Attempting uninstall: agent-harness
+    Found existing installation: agent-harness 2.0.0
+    Uninstalling agent-harness-2.0.0:
+      Successfully uninstalled agent-harness-2.0.0
+Successfully installed agent-harness-2.0.0
+
+[notice] A new release of pip is available: 24.2 -> 26.2.1
+[notice] To update, run: python3.11 -m pip install --upgrade pip
+2.0.0
+Robo 0.1.0
+No Streamlit dependency

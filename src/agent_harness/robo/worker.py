@@ -16,8 +16,10 @@ if __name__ == "__main__":
 import base64
 import builtins
 import json
+import os
 import resource
 import runpy
+import threading
 import time
 import traceback
 from typing import Any
@@ -99,6 +101,14 @@ class Robo:
 
 def main() -> None:
     config = json.loads(sys.argv[1])
+
+    def watch_host() -> None:
+        # The host exclusively holds the write end; EOF interrupts even a
+        # program sleeping without SDK calls after host death/disconnect.
+        os.read(config["liveness_fd"], 1)
+        os._exit(75)
+
+    threading.Thread(target=watch_host, daemon=True).start()
     limits = config["limits"]
     resource.setrlimit(
         resource.RLIMIT_CPU, (limits["cpu_seconds"], limits["cpu_seconds"])

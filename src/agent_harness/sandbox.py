@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -16,6 +17,24 @@ def python_launcher_rules(executable: Path) -> str:
     resolved = executable.resolve()
     if not resolved.name.startswith("python"):
         return ""
+    # venv --copies keeps a launcher outside the framework. Trust pyvenv's base
+    # image only when its executable bytes match the actual copied launcher.
+    config = executable.parent.parent / "pyvenv.cfg"
+    if config.is_file() and not any(
+        p.name.endswith(".framework") for p in resolved.parents
+    ):
+        values = dict(
+            line.split(" = ", 1)
+            for line in config.read_text().splitlines()
+            if " = " in line
+        )
+        base = Path(values.get("executable", ""))
+        if (
+            base.is_file()
+            and hashlib.sha256(base.read_bytes()).digest()
+            == hashlib.sha256(resolved.read_bytes()).digest()
+        ):
+            resolved = base.resolve()
     framework = next(
         (path for path in resolved.parents if path.name.endswith(".framework")), None
     )

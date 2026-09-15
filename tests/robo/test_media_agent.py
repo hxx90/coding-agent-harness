@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -159,8 +160,10 @@ class ClosedLoopModel:
         self.jobs = []
         self.images = []
         self.polls = 0
+        self.snapshots = []
 
     def complete(self, messages, tools, *, on_text, stop):
+        self.snapshots.append(messages[0]["content"])
         self.images.extend(references(messages))
         if self.phase == 0:
             self.phase += 1
@@ -256,6 +259,10 @@ def test_agent_writes_observes_repairs_and_resumes(host, tmp_path):
     )
     assert result.status == "completed", result
     assert len(model.jobs) == 2 and model.images and model.polls == 7
+    assert (
+        "event_cursor" in model.snapshots[-1]
+        and '"status": "succeeded"' in model.snapshots[-1]
+    )
     assert session.state["turns"][-1]["changes"].keys() == {
         "control.py",
         "program.json",
@@ -348,5 +355,47 @@ def test_interrupted_submission_recovers_original_job(host, tmp_path):
     session._balance_pending("Previous conversation interrupted")
     recovered = json.loads(session.state["messages"][-1]["content"])
     assert recovered["recovered"] and recovered["job"]["id"] == original["id"]
+    assert session.state["robo_jobs"] == [original["id"]]
     assert len(client.request("jobs")["jobs"]) == 1
     wait_job(client, original["id"])
+
+    class InspectRecovered:
+        def complete(self, messages, tools, *, on_text, stop):
+            snapshot = json.loads(messages[0]["content"].rsplit("\n", 1)[1])
+            assert snapshot["jobs"][0]["id"] == original["id"]
+            assert snapshot["jobs"][0]["program_version"] == version["id"]
+            assert snapshot["jobs"][0]["status"] == "exited"
+            assert snapshot["jobs"][0]["event_cursor"] > 0
+            return Completion("Recovered current host state")
+
+    session.model = InspectRecovered()
+    assert session.run("Check the recovered job").status == "completed"
+
+
+def test_model_budget_interrupts_long_poll_without_cancelling_job(host, tmp_path):
+    config = replace(settings(tmp_path, host), max_seconds=0.15)
+    client = host[0]
+    version = client.request(
+        "publish", manifest=MANIFEST, sources={"control.py": "robo.sleep(3)"}
+    )
+    job = client.request(
+        "submit",
+        program_version=version["id"],
+        request_id="budget-independent",
+        parameters={"gain": 0.5},
+        based_on=client.request("observe")["id"],
+    )
+
+    class PollModel:
+        def complete(self, messages, tools, *, on_text, stop):
+            return ClosedLoopModel.call(
+                "program_events", {"job_id": job["id"], "after": 10**12, "wait": 10}
+            )
+
+    session = CodingSession(config, model=PollModel())
+    started = time.monotonic()
+    outcome = session.run("Wait for job events")
+    assert outcome.status == "budget_exhausted" and time.monotonic() - started < 0.8
+    assert client.request("status", job_id=job["id"])["status"] == "running"
+    client.request("cancel", job_id=job["id"])
+    wait_job(client, job["id"])

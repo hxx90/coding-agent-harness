@@ -1,0 +1,1753 @@
+[
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.14792,
+    "type": "submitted",
+    "seq": 14
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "pid": 3364,
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.159376,
+    "type": "started",
+    "seq": 15
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "observation": {
+      "calibration": {
+        "id": "sim-cal-v1",
+        "pixels_per_mm": 1,
+        "stage_to_image": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "clock": "host-wall",
+      "device_revision": 1,
+      "frame": "camera_px",
+      "id": "obs_12b98ef5142f488dba77cdae2472f5e6",
+      "image": {
+        "id": "534a803f7f953c3b2af9e005a6b807cbaed4417fdd061d523ce31a8b104a289e",
+        "metadata": {
+          "calibration": {
+            "id": "sim-cal-v1",
+            "pixels_per_mm": 1,
+            "stage_to_image": [
+              [
+                1,
+                0
+              ],
+              [
+                0,
+                1
+              ]
+            ]
+          },
+          "clock": "host-wall",
+          "device_revision": 1,
+          "frame": "camera_px",
+          "id": "obs_12b98ef5142f488dba77cdae2472f5e6",
+          "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+          "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+          "quality": "valid",
+          "received_at": 1789448748.4797819,
+          "sampled_at": 1789448748.4794009,
+          "seq": 7,
+          "simulated": true,
+          "source": "sim-camera",
+          "sync_error_s": 0,
+          "unit": "pixel"
+        },
+        "mime": "image/png",
+        "type": "image_ref"
+      },
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "quality": "valid",
+      "received_at": 1789448748.4797819,
+      "sampled_at": 1789448748.4794009,
+      "seq": 7,
+      "simulated": true,
+      "source": "sim-camera",
+      "state": {
+        "moving": false,
+        "protected": false,
+        "x_mm": 18.0,
+        "y_mm": -12.0
+      },
+      "sync_error_s": 0,
+      "unit": "pixel"
+    },
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.4801831,
+    "type": "observation",
+    "seq": 16
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "text": "step 0 pixel error 21.633307652783937",
+    "timestamp": 1789448748.481348,
+    "type": "log",
+    "seq": 17
+  },
+  {
+    "action": {
+      "args": {
+        "based_on": "obs_12b98ef5142f488dba77cdae2472f5e6",
+        "command_id": "correction-0",
+        "dx": -4,
+        "dy": 4,
+        "lose_ack": true,
+        "speed": 5
+      },
+      "based_on": "obs_12b98ef5142f488dba77cdae2472f5e6",
+      "command_id": "correction-0",
+      "fingerprint": "28d0fdc1c8c4f83b83d8d85f191d6afc828f3b0c34e0f855f4c2c5ab9ba82260",
+      "id": "job_31d3c9e6b9da4007866560bdbfa76e34:correction-0",
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "status": "dispatching",
+      "target_mm": [
+        14.0,
+        -8.0
+      ],
+      "timestamp": 1789448748.482219
+    },
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.4823492,
+    "type": "action_intent",
+    "seq": 18
+  },
+  {
+    "action": {
+      "args": {
+        "based_on": "obs_12b98ef5142f488dba77cdae2472f5e6",
+        "command_id": "correction-0",
+        "dx": -4,
+        "dy": 4,
+        "lose_ack": true,
+        "speed": 5
+      },
+      "based_on": "obs_12b98ef5142f488dba77cdae2472f5e6",
+      "command_id": "correction-0",
+      "fingerprint": "28d0fdc1c8c4f83b83d8d85f191d6afc828f3b0c34e0f855f4c2c5ab9ba82260",
+      "id": "job_31d3c9e6b9da4007866560bdbfa76e34:correction-0",
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "status": "unknown",
+      "target_mm": [
+        14.0,
+        -8.0
+      ],
+      "timestamp": 1789448748.482219
+    },
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.482701,
+    "type": "action_result",
+    "seq": 19
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "observation": {
+      "calibration": {
+        "id": "sim-cal-v1",
+        "pixels_per_mm": 1,
+        "stage_to_image": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "clock": "host-wall",
+      "device_revision": 2,
+      "frame": "camera_px",
+      "id": "obs_16d23c15903a49bfb3a3b7772c38bfd7",
+      "image": {
+        "id": "948fd0865a41ffac76ffd7f948753e5e3cce62bc2e80649eb7dee1b0fda8874b",
+        "metadata": {
+          "calibration": {
+            "id": "sim-cal-v1",
+            "pixels_per_mm": 1,
+            "stage_to_image": [
+              [
+                1,
+                0
+              ],
+              [
+                0,
+                1
+              ]
+            ]
+          },
+          "clock": "host-wall",
+          "device_revision": 2,
+          "frame": "camera_px",
+          "id": "obs_16d23c15903a49bfb3a3b7772c38bfd7",
+          "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+          "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+          "quality": "valid",
+          "received_at": 1789448748.483679,
+          "sampled_at": 1789448748.483339,
+          "seq": 8,
+          "simulated": true,
+          "source": "sim-camera",
+          "sync_error_s": 0,
+          "unit": "pixel"
+        },
+        "mime": "image/png",
+        "type": "image_ref"
+      },
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "quality": "valid",
+      "received_at": 1789448748.483679,
+      "sampled_at": 1789448748.483339,
+      "seq": 8,
+      "simulated": true,
+      "source": "sim-camera",
+      "state": {
+        "moving": false,
+        "protected": false,
+        "x_mm": 14.0,
+        "y_mm": -8.0
+      },
+      "sync_error_s": 0,
+      "unit": "pixel"
+    },
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.484311,
+    "type": "observation",
+    "seq": 20
+  },
+  {
+    "action": {
+      "args": {
+        "based_on": "obs_12b98ef5142f488dba77cdae2472f5e6",
+        "command_id": "correction-0",
+        "dx": -4,
+        "dy": 4,
+        "lose_ack": true,
+        "speed": 5
+      },
+      "based_on": "obs_12b98ef5142f488dba77cdae2472f5e6",
+      "command_id": "correction-0",
+      "fingerprint": "28d0fdc1c8c4f83b83d8d85f191d6afc828f3b0c34e0f855f4c2c5ab9ba82260",
+      "id": "job_31d3c9e6b9da4007866560bdbfa76e34:correction-0",
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "observation": "obs_16d23c15903a49bfb3a3b7772c38bfd7",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "reconciled_at": 1789448748.4844658,
+      "status": "confirmed",
+      "target_mm": [
+        14.0,
+        -8.0
+      ],
+      "timestamp": 1789448748.482219
+    },
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "observation": "obs_16d23c15903a49bfb3a3b7772c38bfd7",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.4846442,
+    "type": "action_reconciled",
+    "seq": 21
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "observation": {
+      "calibration": {
+        "id": "sim-cal-v1",
+        "pixels_per_mm": 1,
+        "stage_to_image": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "clock": "host-wall",
+      "device_revision": 2,
+      "frame": "camera_px",
+      "id": "obs_c6a032247abb4ff9b3032645c826cad3",
+      "image": {
+        "id": "948fd0865a41ffac76ffd7f948753e5e3cce62bc2e80649eb7dee1b0fda8874b",
+        "metadata": {
+          "calibration": {
+            "id": "sim-cal-v1",
+            "pixels_per_mm": 1,
+            "stage_to_image": [
+              [
+                1,
+                0
+              ],
+              [
+                0,
+                1
+              ]
+            ]
+          },
+          "clock": "host-wall",
+          "device_revision": 2,
+          "frame": "camera_px",
+          "id": "obs_c6a032247abb4ff9b3032645c826cad3",
+          "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+          "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+          "quality": "valid",
+          "received_at": 1789448748.52087,
+          "sampled_at": 1789448748.520422,
+          "seq": 9,
+          "simulated": true,
+          "source": "sim-camera",
+          "sync_error_s": 0,
+          "unit": "pixel"
+        },
+        "mime": "image/png",
+        "type": "image_ref"
+      },
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "quality": "valid",
+      "received_at": 1789448748.52087,
+      "sampled_at": 1789448748.520422,
+      "seq": 9,
+      "simulated": true,
+      "source": "sim-camera",
+      "state": {
+        "moving": false,
+        "protected": false,
+        "x_mm": 14.0,
+        "y_mm": -8.0
+      },
+      "sync_error_s": 0,
+      "unit": "pixel"
+    },
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.5214112,
+    "type": "observation",
+    "seq": 22
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "text": "step 1 pixel error 16.1245154965971",
+    "timestamp": 1789448748.52269,
+    "type": "log",
+    "seq": 23
+  },
+  {
+    "action": {
+      "args": {
+        "based_on": "obs_c6a032247abb4ff9b3032645c826cad3",
+        "command_id": "correction-1",
+        "dx": -4,
+        "dy": 4,
+        "lose_ack": false,
+        "speed": 5
+      },
+      "based_on": "obs_c6a032247abb4ff9b3032645c826cad3",
+      "command_id": "correction-1",
+      "fingerprint": "c0c1573996af55c425083d3915ec6f30f8bca20002e91f0ee651db8550f959e1",
+      "id": "job_31d3c9e6b9da4007866560bdbfa76e34:correction-1",
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "status": "dispatching",
+      "target_mm": [
+        10.0,
+        -4.0
+      ],
+      "timestamp": 1789448748.523742
+    },
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.5239098,
+    "type": "action_intent",
+    "seq": 24
+  },
+  {
+    "action": {
+      "args": {
+        "based_on": "obs_c6a032247abb4ff9b3032645c826cad3",
+        "command_id": "correction-1",
+        "dx": -4,
+        "dy": 4,
+        "lose_ack": false,
+        "speed": 5
+      },
+      "based_on": "obs_c6a032247abb4ff9b3032645c826cad3",
+      "command_id": "correction-1",
+      "fingerprint": "c0c1573996af55c425083d3915ec6f30f8bca20002e91f0ee651db8550f959e1",
+      "id": "job_31d3c9e6b9da4007866560bdbfa76e34:correction-1",
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "result": {
+        "position_mm": [
+          10.0,
+          -4.0
+        ],
+        "simulated": true,
+        "status": "confirmed"
+      },
+      "status": "confirmed",
+      "target_mm": [
+        10.0,
+        -4.0
+      ],
+      "timestamp": 1789448748.523742
+    },
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.524383,
+    "type": "action_result",
+    "seq": 25
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "observation": {
+      "calibration": {
+        "id": "sim-cal-v1",
+        "pixels_per_mm": 1,
+        "stage_to_image": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "clock": "host-wall",
+      "device_revision": 3,
+      "frame": "camera_px",
+      "id": "obs_eff1cd04784540c6a40ba53b70888029",
+      "image": {
+        "id": "dc7a5c5710cb4cd54f72fb20865e4bf3e9be17d03f6452fe3595b5e113d3597e",
+        "metadata": {
+          "calibration": {
+            "id": "sim-cal-v1",
+            "pixels_per_mm": 1,
+            "stage_to_image": [
+              [
+                1,
+                0
+              ],
+              [
+                0,
+                1
+              ]
+            ]
+          },
+          "clock": "host-wall",
+          "device_revision": 3,
+          "frame": "camera_px",
+          "id": "obs_eff1cd04784540c6a40ba53b70888029",
+          "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+          "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+          "quality": "valid",
+          "received_at": 1789448748.560622,
+          "sampled_at": 1789448748.560066,
+          "seq": 10,
+          "simulated": true,
+          "source": "sim-camera",
+          "sync_error_s": 0,
+          "unit": "pixel"
+        },
+        "mime": "image/png",
+        "type": "image_ref"
+      },
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "quality": "valid",
+      "received_at": 1789448748.560622,
+      "sampled_at": 1789448748.560066,
+      "seq": 10,
+      "simulated": true,
+      "source": "sim-camera",
+      "state": {
+        "moving": false,
+        "protected": false,
+        "x_mm": 10.0,
+        "y_mm": -4.0
+      },
+      "sync_error_s": 0,
+      "unit": "pixel"
+    },
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.561436,
+    "type": "observation",
+    "seq": 26
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "text": "step 2 pixel error 10.770329614269007",
+    "timestamp": 1789448748.562687,
+    "type": "log",
+    "seq": 27
+  },
+  {
+    "action": {
+      "args": {
+        "based_on": "obs_eff1cd04784540c6a40ba53b70888029",
+        "command_id": "correction-2",
+        "dx": -4,
+        "dy": 2.6,
+        "lose_ack": false,
+        "speed": 5
+      },
+      "based_on": "obs_eff1cd04784540c6a40ba53b70888029",
+      "command_id": "correction-2",
+      "fingerprint": "430812ea7dd11f156429e95cb1fa1fb8a8ebfc07518936c9d20f643034869c39",
+      "id": "job_31d3c9e6b9da4007866560bdbfa76e34:correction-2",
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "status": "dispatching",
+      "target_mm": [
+        6.0,
+        -1.4
+      ],
+      "timestamp": 1789448748.563651
+    },
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.56384,
+    "type": "action_intent",
+    "seq": 28
+  },
+  {
+    "action": {
+      "args": {
+        "based_on": "obs_eff1cd04784540c6a40ba53b70888029",
+        "command_id": "correction-2",
+        "dx": -4,
+        "dy": 2.6,
+        "lose_ack": false,
+        "speed": 5
+      },
+      "based_on": "obs_eff1cd04784540c6a40ba53b70888029",
+      "command_id": "correction-2",
+      "fingerprint": "430812ea7dd11f156429e95cb1fa1fb8a8ebfc07518936c9d20f643034869c39",
+      "id": "job_31d3c9e6b9da4007866560bdbfa76e34:correction-2",
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "result": {
+        "position_mm": [
+          6.0,
+          -1.4
+        ],
+        "simulated": true,
+        "status": "confirmed"
+      },
+      "status": "confirmed",
+      "target_mm": [
+        6.0,
+        -1.4
+      ],
+      "timestamp": 1789448748.563651
+    },
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.564296,
+    "type": "action_result",
+    "seq": 29
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "observation": {
+      "calibration": {
+        "id": "sim-cal-v1",
+        "pixels_per_mm": 1,
+        "stage_to_image": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "clock": "host-wall",
+      "device_revision": 4,
+      "frame": "camera_px",
+      "id": "obs_cd2d28bacf8649f2aae4dae42d949f31",
+      "image": {
+        "id": "2cec7e57b3f2918b690590f085a30d752adaf22aef9071d60be3514fdd5a920d",
+        "metadata": {
+          "calibration": {
+            "id": "sim-cal-v1",
+            "pixels_per_mm": 1,
+            "stage_to_image": [
+              [
+                1,
+                0
+              ],
+              [
+                0,
+                1
+              ]
+            ]
+          },
+          "clock": "host-wall",
+          "device_revision": 4,
+          "frame": "camera_px",
+          "id": "obs_cd2d28bacf8649f2aae4dae42d949f31",
+          "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+          "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+          "quality": "valid",
+          "received_at": 1789448748.6010041,
+          "sampled_at": 1789448748.600517,
+          "seq": 11,
+          "simulated": true,
+          "source": "sim-camera",
+          "sync_error_s": 0,
+          "unit": "pixel"
+        },
+        "mime": "image/png",
+        "type": "image_ref"
+      },
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "quality": "valid",
+      "received_at": 1789448748.6010041,
+      "sampled_at": 1789448748.600517,
+      "seq": 11,
+      "simulated": true,
+      "source": "sim-camera",
+      "state": {
+        "moving": false,
+        "protected": false,
+        "x_mm": 6.0,
+        "y_mm": -1.4
+      },
+      "sync_error_s": 0,
+      "unit": "pixel"
+    },
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.601783,
+    "type": "observation",
+    "seq": 30
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "text": "step 3 pixel error 6.082762530298219",
+    "timestamp": 1789448748.6032262,
+    "type": "log",
+    "seq": 31
+  },
+  {
+    "action": {
+      "args": {
+        "based_on": "obs_cd2d28bacf8649f2aae4dae42d949f31",
+        "command_id": "correction-3",
+        "dx": -3.9000000000000004,
+        "dy": 0.65,
+        "lose_ack": false,
+        "speed": 5
+      },
+      "based_on": "obs_cd2d28bacf8649f2aae4dae42d949f31",
+      "command_id": "correction-3",
+      "fingerprint": "386839a9e6938bda140efa79bd630dca70a7281f2a3b28847e324c3028a52a25",
+      "id": "job_31d3c9e6b9da4007866560bdbfa76e34:correction-3",
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "status": "dispatching",
+      "target_mm": [
+        2.0999999999999996,
+        -0.7499999999999999
+      ],
+      "timestamp": 1789448748.604224
+    },
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.604464,
+    "type": "action_intent",
+    "seq": 32
+  },
+  {
+    "action": {
+      "args": {
+        "based_on": "obs_cd2d28bacf8649f2aae4dae42d949f31",
+        "command_id": "correction-3",
+        "dx": -3.9000000000000004,
+        "dy": 0.65,
+        "lose_ack": false,
+        "speed": 5
+      },
+      "based_on": "obs_cd2d28bacf8649f2aae4dae42d949f31",
+      "command_id": "correction-3",
+      "fingerprint": "386839a9e6938bda140efa79bd630dca70a7281f2a3b28847e324c3028a52a25",
+      "id": "job_31d3c9e6b9da4007866560bdbfa76e34:correction-3",
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "result": {
+        "position_mm": [
+          2.0999999999999996,
+          -0.7499999999999999
+        ],
+        "simulated": true,
+        "status": "confirmed"
+      },
+      "status": "confirmed",
+      "target_mm": [
+        2.0999999999999996,
+        -0.7499999999999999
+      ],
+      "timestamp": 1789448748.604224
+    },
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.604796,
+    "type": "action_result",
+    "seq": 33
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "observation": {
+      "calibration": {
+        "id": "sim-cal-v1",
+        "pixels_per_mm": 1,
+        "stage_to_image": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "clock": "host-wall",
+      "device_revision": 5,
+      "frame": "camera_px",
+      "id": "obs_7a7fba6a99944a7c8d4ce03c313f5ff0",
+      "image": {
+        "id": "1214d33cbd6f1ca60bc175fe4b59e654ebc7024d88cd4d35d9429f743000bf68",
+        "metadata": {
+          "calibration": {
+            "id": "sim-cal-v1",
+            "pixels_per_mm": 1,
+            "stage_to_image": [
+              [
+                1,
+                0
+              ],
+              [
+                0,
+                1
+              ]
+            ]
+          },
+          "clock": "host-wall",
+          "device_revision": 5,
+          "frame": "camera_px",
+          "id": "obs_7a7fba6a99944a7c8d4ce03c313f5ff0",
+          "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+          "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+          "quality": "valid",
+          "received_at": 1789448748.641196,
+          "sampled_at": 1789448748.6407628,
+          "seq": 12,
+          "simulated": true,
+          "source": "sim-camera",
+          "sync_error_s": 0,
+          "unit": "pixel"
+        },
+        "mime": "image/png",
+        "type": "image_ref"
+      },
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "quality": "valid",
+      "received_at": 1789448748.641196,
+      "sampled_at": 1789448748.6407628,
+      "seq": 12,
+      "simulated": true,
+      "source": "sim-camera",
+      "state": {
+        "moving": false,
+        "protected": false,
+        "x_mm": 2.0999999999999996,
+        "y_mm": -0.7499999999999999
+      },
+      "sync_error_s": 0,
+      "unit": "pixel"
+    },
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.641964,
+    "type": "observation",
+    "seq": 34
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "text": "step 4 pixel error 2.23606797749979",
+    "timestamp": 1789448748.643302,
+    "type": "log",
+    "seq": 35
+  },
+  {
+    "action": {
+      "args": {
+        "based_on": "obs_7a7fba6a99944a7c8d4ce03c313f5ff0",
+        "command_id": "correction-4",
+        "dx": -1.3,
+        "dy": 0.65,
+        "lose_ack": false,
+        "speed": 5
+      },
+      "based_on": "obs_7a7fba6a99944a7c8d4ce03c313f5ff0",
+      "command_id": "correction-4",
+      "fingerprint": "a5bf8576f3f10815e12687d2ea0e2074d1d5576123191fd5e4aadaee861674fb",
+      "id": "job_31d3c9e6b9da4007866560bdbfa76e34:correction-4",
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "status": "dispatching",
+      "target_mm": [
+        0.7999999999999996,
+        -0.09999999999999987
+      ],
+      "timestamp": 1789448748.644335
+    },
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.6445708,
+    "type": "action_intent",
+    "seq": 36
+  },
+  {
+    "action": {
+      "args": {
+        "based_on": "obs_7a7fba6a99944a7c8d4ce03c313f5ff0",
+        "command_id": "correction-4",
+        "dx": -1.3,
+        "dy": 0.65,
+        "lose_ack": false,
+        "speed": 5
+      },
+      "based_on": "obs_7a7fba6a99944a7c8d4ce03c313f5ff0",
+      "command_id": "correction-4",
+      "fingerprint": "a5bf8576f3f10815e12687d2ea0e2074d1d5576123191fd5e4aadaee861674fb",
+      "id": "job_31d3c9e6b9da4007866560bdbfa76e34:correction-4",
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "result": {
+        "position_mm": [
+          0.7999999999999996,
+          -0.09999999999999987
+        ],
+        "simulated": true,
+        "status": "confirmed"
+      },
+      "status": "confirmed",
+      "target_mm": [
+        0.7999999999999996,
+        -0.09999999999999987
+      ],
+      "timestamp": 1789448748.644335
+    },
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.644865,
+    "type": "action_result",
+    "seq": 37
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "observation": {
+      "calibration": {
+        "id": "sim-cal-v1",
+        "pixels_per_mm": 1,
+        "stage_to_image": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "clock": "host-wall",
+      "device_revision": 6,
+      "frame": "camera_px",
+      "id": "obs_64beb43f915b40689fc50252c2a1381d",
+      "image": {
+        "id": "93cdc0073e6a24087f6cbcfc1877dfb80904162f8b4e19155048e5a1e3ed50a3",
+        "metadata": {
+          "calibration": {
+            "id": "sim-cal-v1",
+            "pixels_per_mm": 1,
+            "stage_to_image": [
+              [
+                1,
+                0
+              ],
+              [
+                0,
+                1
+              ]
+            ]
+          },
+          "clock": "host-wall",
+          "device_revision": 6,
+          "frame": "camera_px",
+          "id": "obs_64beb43f915b40689fc50252c2a1381d",
+          "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+          "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+          "quality": "valid",
+          "received_at": 1789448748.6804988,
+          "sampled_at": 1789448748.680039,
+          "seq": 13,
+          "simulated": true,
+          "source": "sim-camera",
+          "sync_error_s": 0,
+          "unit": "pixel"
+        },
+        "mime": "image/png",
+        "type": "image_ref"
+      },
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "quality": "valid",
+      "received_at": 1789448748.6804988,
+      "sampled_at": 1789448748.680039,
+      "seq": 13,
+      "simulated": true,
+      "source": "sim-camera",
+      "state": {
+        "moving": false,
+        "protected": false,
+        "x_mm": 0.7999999999999996,
+        "y_mm": -0.09999999999999987
+      },
+      "sync_error_s": 0,
+      "unit": "pixel"
+    },
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.6811662,
+    "type": "observation",
+    "seq": 38
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "text": "step 5 pixel error 1.0",
+    "timestamp": 1789448748.682697,
+    "type": "log",
+    "seq": 39
+  },
+  {
+    "action": {
+      "args": {
+        "based_on": "obs_64beb43f915b40689fc50252c2a1381d",
+        "command_id": "correction-5",
+        "dx": -0.65,
+        "dy": 0.0,
+        "lose_ack": false,
+        "speed": 5
+      },
+      "based_on": "obs_64beb43f915b40689fc50252c2a1381d",
+      "command_id": "correction-5",
+      "fingerprint": "697a3f4a134fec2570a1ed01760577cd5b7334ff4d573123a4dbe041f7a75757",
+      "id": "job_31d3c9e6b9da4007866560bdbfa76e34:correction-5",
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "status": "dispatching",
+      "target_mm": [
+        0.14999999999999958,
+        -0.09999999999999987
+      ],
+      "timestamp": 1789448748.683451
+    },
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.683611,
+    "type": "action_intent",
+    "seq": 40
+  },
+  {
+    "action": {
+      "args": {
+        "based_on": "obs_64beb43f915b40689fc50252c2a1381d",
+        "command_id": "correction-5",
+        "dx": -0.65,
+        "dy": 0.0,
+        "lose_ack": false,
+        "speed": 5
+      },
+      "based_on": "obs_64beb43f915b40689fc50252c2a1381d",
+      "command_id": "correction-5",
+      "fingerprint": "697a3f4a134fec2570a1ed01760577cd5b7334ff4d573123a4dbe041f7a75757",
+      "id": "job_31d3c9e6b9da4007866560bdbfa76e34:correction-5",
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "result": {
+        "position_mm": [
+          0.14999999999999958,
+          -0.09999999999999987
+        ],
+        "simulated": true,
+        "status": "confirmed"
+      },
+      "status": "confirmed",
+      "target_mm": [
+        0.14999999999999958,
+        -0.09999999999999987
+      ],
+      "timestamp": 1789448748.683451
+    },
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.6841002,
+    "type": "action_result",
+    "seq": 41
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "observation": {
+      "calibration": {
+        "id": "sim-cal-v1",
+        "pixels_per_mm": 1,
+        "stage_to_image": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "clock": "host-wall",
+      "device_revision": 7,
+      "frame": "camera_px",
+      "id": "obs_85941f496c24498b8e93ae49792989d3",
+      "image": {
+        "id": "e4cf531dd9fd104f8cc337daecbda9445adcf4644c904b7a4c6f83baccd20b7f",
+        "metadata": {
+          "calibration": {
+            "id": "sim-cal-v1",
+            "pixels_per_mm": 1,
+            "stage_to_image": [
+              [
+                1,
+                0
+              ],
+              [
+                0,
+                1
+              ]
+            ]
+          },
+          "clock": "host-wall",
+          "device_revision": 7,
+          "frame": "camera_px",
+          "id": "obs_85941f496c24498b8e93ae49792989d3",
+          "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+          "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+          "quality": "valid",
+          "received_at": 1789448748.720652,
+          "sampled_at": 1789448748.720159,
+          "seq": 14,
+          "simulated": true,
+          "source": "sim-camera",
+          "sync_error_s": 0,
+          "unit": "pixel"
+        },
+        "mime": "image/png",
+        "type": "image_ref"
+      },
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "quality": "valid",
+      "received_at": 1789448748.720652,
+      "sampled_at": 1789448748.720159,
+      "seq": 14,
+      "simulated": true,
+      "source": "sim-camera",
+      "state": {
+        "moving": false,
+        "protected": false,
+        "x_mm": 0.14999999999999958,
+        "y_mm": -0.09999999999999987
+      },
+      "sync_error_s": 0,
+      "unit": "pixel"
+    },
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.721482,
+    "type": "observation",
+    "seq": 42
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "text": "step 6 pixel error 0.0",
+    "timestamp": 1789448748.722683,
+    "type": "log",
+    "seq": 43
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "observation": {
+      "calibration": {
+        "id": "sim-cal-v1",
+        "pixels_per_mm": 1,
+        "stage_to_image": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "clock": "host-wall",
+      "device_revision": 7,
+      "frame": "camera_px",
+      "id": "obs_59690e2f4a7c43e7beec54589d960e87",
+      "image": {
+        "id": "e4cf531dd9fd104f8cc337daecbda9445adcf4644c904b7a4c6f83baccd20b7f",
+        "metadata": {
+          "calibration": {
+            "id": "sim-cal-v1",
+            "pixels_per_mm": 1,
+            "stage_to_image": [
+              [
+                1,
+                0
+              ],
+              [
+                0,
+                1
+              ]
+            ]
+          },
+          "clock": "host-wall",
+          "device_revision": 7,
+          "frame": "camera_px",
+          "id": "obs_59690e2f4a7c43e7beec54589d960e87",
+          "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+          "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+          "quality": "valid",
+          "received_at": 1789448748.758805,
+          "sampled_at": 1789448748.758327,
+          "seq": 15,
+          "simulated": true,
+          "source": "sim-camera",
+          "sync_error_s": 0,
+          "unit": "pixel"
+        },
+        "mime": "image/png",
+        "type": "image_ref"
+      },
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "quality": "valid",
+      "received_at": 1789448748.758805,
+      "sampled_at": 1789448748.758327,
+      "seq": 15,
+      "simulated": true,
+      "source": "sim-camera",
+      "state": {
+        "moving": false,
+        "protected": false,
+        "x_mm": 0.14999999999999958,
+        "y_mm": -0.09999999999999987
+      },
+      "sync_error_s": 0,
+      "unit": "pixel"
+    },
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.759414,
+    "type": "observation",
+    "seq": 44
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "text": "step 7 pixel error 0.0",
+    "timestamp": 1789448748.7608728,
+    "type": "log",
+    "seq": 45
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "observation": {
+      "calibration": {
+        "id": "sim-cal-v1",
+        "pixels_per_mm": 1,
+        "stage_to_image": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "clock": "host-wall",
+      "device_revision": 7,
+      "frame": "camera_px",
+      "id": "obs_e05e794a171b4eb5b697849c6255d487",
+      "image": {
+        "id": "e4cf531dd9fd104f8cc337daecbda9445adcf4644c904b7a4c6f83baccd20b7f",
+        "metadata": {
+          "calibration": {
+            "id": "sim-cal-v1",
+            "pixels_per_mm": 1,
+            "stage_to_image": [
+              [
+                1,
+                0
+              ],
+              [
+                0,
+                1
+              ]
+            ]
+          },
+          "clock": "host-wall",
+          "device_revision": 7,
+          "frame": "camera_px",
+          "id": "obs_e05e794a171b4eb5b697849c6255d487",
+          "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+          "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+          "quality": "valid",
+          "received_at": 1789448748.797641,
+          "sampled_at": 1789448748.797125,
+          "seq": 16,
+          "simulated": true,
+          "source": "sim-camera",
+          "sync_error_s": 0,
+          "unit": "pixel"
+        },
+        "mime": "image/png",
+        "type": "image_ref"
+      },
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "quality": "valid",
+      "received_at": 1789448748.797641,
+      "sampled_at": 1789448748.797125,
+      "seq": 16,
+      "simulated": true,
+      "source": "sim-camera",
+      "state": {
+        "moving": false,
+        "protected": false,
+        "x_mm": 0.14999999999999958,
+        "y_mm": -0.09999999999999987
+      },
+      "sync_error_s": 0,
+      "unit": "pixel"
+    },
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.798173,
+    "type": "observation",
+    "seq": 46
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "text": "step 8 pixel error 0.0",
+    "timestamp": 1789448748.799629,
+    "type": "log",
+    "seq": 47
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "observation": {
+      "calibration": {
+        "id": "sim-cal-v1",
+        "pixels_per_mm": 1,
+        "stage_to_image": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "clock": "host-wall",
+      "device_revision": 7,
+      "frame": "camera_px",
+      "id": "obs_75f3bf845b5f481baaa5f7513025b4e1",
+      "image": {
+        "id": "e4cf531dd9fd104f8cc337daecbda9445adcf4644c904b7a4c6f83baccd20b7f",
+        "metadata": {
+          "calibration": {
+            "id": "sim-cal-v1",
+            "pixels_per_mm": 1,
+            "stage_to_image": [
+              [
+                1,
+                0
+              ],
+              [
+                0,
+                1
+              ]
+            ]
+          },
+          "clock": "host-wall",
+          "device_revision": 7,
+          "frame": "camera_px",
+          "id": "obs_75f3bf845b5f481baaa5f7513025b4e1",
+          "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+          "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+          "quality": "valid",
+          "received_at": 1789448748.8347158,
+          "sampled_at": 1789448748.8342311,
+          "seq": 17,
+          "simulated": true,
+          "source": "sim-camera",
+          "sync_error_s": 0,
+          "unit": "pixel"
+        },
+        "mime": "image/png",
+        "type": "image_ref"
+      },
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "quality": "valid",
+      "received_at": 1789448748.8347158,
+      "sampled_at": 1789448748.8342311,
+      "seq": 17,
+      "simulated": true,
+      "source": "sim-camera",
+      "state": {
+        "moving": false,
+        "protected": false,
+        "x_mm": 0.14999999999999958,
+        "y_mm": -0.09999999999999987
+      },
+      "sync_error_s": 0,
+      "unit": "pixel"
+    },
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.835374,
+    "type": "observation",
+    "seq": 48
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "text": "step 9 pixel error 0.0",
+    "timestamp": 1789448748.836778,
+    "type": "log",
+    "seq": 49
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "observation": {
+      "calibration": {
+        "id": "sim-cal-v1",
+        "pixels_per_mm": 1,
+        "stage_to_image": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "clock": "host-wall",
+      "device_revision": 7,
+      "frame": "camera_px",
+      "id": "obs_b4151cea32d8436e9ae27ea0b5f26e87",
+      "image": {
+        "id": "e4cf531dd9fd104f8cc337daecbda9445adcf4644c904b7a4c6f83baccd20b7f",
+        "metadata": {
+          "calibration": {
+            "id": "sim-cal-v1",
+            "pixels_per_mm": 1,
+            "stage_to_image": [
+              [
+                1,
+                0
+              ],
+              [
+                0,
+                1
+              ]
+            ]
+          },
+          "clock": "host-wall",
+          "device_revision": 7,
+          "frame": "camera_px",
+          "id": "obs_b4151cea32d8436e9ae27ea0b5f26e87",
+          "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+          "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+          "quality": "valid",
+          "received_at": 1789448748.8704698,
+          "sampled_at": 1789448748.8701,
+          "seq": 18,
+          "simulated": true,
+          "source": "sim-camera",
+          "sync_error_s": 0,
+          "unit": "pixel"
+        },
+        "mime": "image/png",
+        "type": "image_ref"
+      },
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "quality": "valid",
+      "received_at": 1789448748.8704698,
+      "sampled_at": 1789448748.8701,
+      "seq": 18,
+      "simulated": true,
+      "source": "sim-camera",
+      "state": {
+        "moving": false,
+        "protected": false,
+        "x_mm": 0.14999999999999958,
+        "y_mm": -0.09999999999999987
+      },
+      "sync_error_s": 0,
+      "unit": "pixel"
+    },
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.870856,
+    "type": "observation",
+    "seq": 50
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "text": "step 10 pixel error 0.0",
+    "timestamp": 1789448748.871836,
+    "type": "log",
+    "seq": 51
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "text": "Local loop complete; the host will independently observe the result.",
+    "timestamp": 1789448748.872583,
+    "type": "log",
+    "seq": 52
+  },
+  {
+    "confirmation": {
+      "confirmed_at": 1789448748.899734,
+      "moving": false,
+      "protection_latched": false,
+      "simulated": true,
+      "status": "confirmed"
+    },
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.8997371,
+    "type": "stop_confirmed",
+    "seq": 53
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "observation": {
+      "calibration": {
+        "id": "sim-cal-v1",
+        "pixels_per_mm": 1,
+        "stage_to_image": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "clock": "host-wall",
+      "device_revision": 7,
+      "frame": "camera_px",
+      "id": "obs_cefdd213dd9342208be741a25788bf39",
+      "image": {
+        "id": "e4cf531dd9fd104f8cc337daecbda9445adcf4644c904b7a4c6f83baccd20b7f",
+        "metadata": {
+          "calibration": {
+            "id": "sim-cal-v1",
+            "pixels_per_mm": 1,
+            "stage_to_image": [
+              [
+                1,
+                0
+              ],
+              [
+                0,
+                1
+              ]
+            ]
+          },
+          "clock": "host-wall",
+          "device_revision": 7,
+          "frame": "camera_px",
+          "id": "obs_cefdd213dd9342208be741a25788bf39",
+          "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+          "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+          "quality": "valid",
+          "received_at": 1789448748.900645,
+          "sampled_at": 1789448748.900245,
+          "seq": 19,
+          "simulated": true,
+          "source": "sim-camera",
+          "sync_error_s": 0,
+          "unit": "pixel"
+        },
+        "mime": "image/png",
+        "type": "image_ref"
+      },
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "quality": "valid",
+      "received_at": 1789448748.900645,
+      "sampled_at": 1789448748.900245,
+      "seq": 19,
+      "simulated": true,
+      "source": "sim-camera",
+      "state": {
+        "moving": false,
+        "protected": false,
+        "x_mm": 0.14999999999999958,
+        "y_mm": -0.09999999999999987
+      },
+      "sync_error_s": 0,
+      "unit": "pixel"
+    },
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.900971,
+    "type": "observation",
+    "seq": 54
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "observation": {
+      "calibration": {
+        "id": "sim-cal-v1",
+        "pixels_per_mm": 1,
+        "stage_to_image": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "clock": "host-wall",
+      "device_revision": 7,
+      "frame": "camera_px",
+      "id": "obs_ffe93b6e22624ff391fc68d9b5b5b5ef",
+      "image": {
+        "id": "e4cf531dd9fd104f8cc337daecbda9445adcf4644c904b7a4c6f83baccd20b7f",
+        "metadata": {
+          "calibration": {
+            "id": "sim-cal-v1",
+            "pixels_per_mm": 1,
+            "stage_to_image": [
+              [
+                1,
+                0
+              ],
+              [
+                0,
+                1
+              ]
+            ]
+          },
+          "clock": "host-wall",
+          "device_revision": 7,
+          "frame": "camera_px",
+          "id": "obs_ffe93b6e22624ff391fc68d9b5b5b5ef",
+          "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+          "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+          "quality": "valid",
+          "received_at": 1789448748.926752,
+          "sampled_at": 1789448748.926396,
+          "seq": 20,
+          "simulated": true,
+          "source": "sim-camera",
+          "sync_error_s": 0,
+          "unit": "pixel"
+        },
+        "mime": "image/png",
+        "type": "image_ref"
+      },
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "quality": "valid",
+      "received_at": 1789448748.926752,
+      "sampled_at": 1789448748.926396,
+      "seq": 20,
+      "simulated": true,
+      "source": "sim-camera",
+      "state": {
+        "moving": false,
+        "protected": false,
+        "x_mm": 0.14999999999999958,
+        "y_mm": -0.09999999999999987
+      },
+      "sync_error_s": 0,
+      "unit": "pixel"
+    },
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.927142,
+    "type": "observation",
+    "seq": 55
+  },
+  {
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "observation": {
+      "calibration": {
+        "id": "sim-cal-v1",
+        "pixels_per_mm": 1,
+        "stage_to_image": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "clock": "host-wall",
+      "device_revision": 7,
+      "frame": "camera_px",
+      "id": "obs_142bb7719bdc4e45900acdb597ee770e",
+      "image": {
+        "id": "e4cf531dd9fd104f8cc337daecbda9445adcf4644c904b7a4c6f83baccd20b7f",
+        "metadata": {
+          "calibration": {
+            "id": "sim-cal-v1",
+            "pixels_per_mm": 1,
+            "stage_to_image": [
+              [
+                1,
+                0
+              ],
+              [
+                0,
+                1
+              ]
+            ]
+          },
+          "clock": "host-wall",
+          "device_revision": 7,
+          "frame": "camera_px",
+          "id": "obs_142bb7719bdc4e45900acdb597ee770e",
+          "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+          "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+          "quality": "valid",
+          "received_at": 1789448748.950044,
+          "sampled_at": 1789448748.949666,
+          "seq": 21,
+          "simulated": true,
+          "source": "sim-camera",
+          "sync_error_s": 0,
+          "unit": "pixel"
+        },
+        "mime": "image/png",
+        "type": "image_ref"
+      },
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "quality": "valid",
+      "received_at": 1789448748.950044,
+      "sampled_at": 1789448748.949666,
+      "seq": 21,
+      "simulated": true,
+      "source": "sim-camera",
+      "state": {
+        "moving": false,
+        "protected": false,
+        "x_mm": 0.14999999999999958,
+        "y_mm": -0.09999999999999987
+      },
+      "sync_error_s": 0,
+      "unit": "pixel"
+    },
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "timestamp": 1789448748.950407,
+    "type": "observation",
+    "seq": 56
+  },
+  {
+    "exit_code": 0,
+    "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+    "physical_verification": {
+      "goal": {
+        "method": "sim-encoder-window-v1",
+        "sample_interval_s": 0.02,
+        "samples": 3,
+        "target_mm": [
+          0,
+          0
+        ],
+        "tolerance_mm": 1
+      },
+      "job_id": "job_31d3c9e6b9da4007866560bdbfa76e34",
+      "max_error_mm": 0.18027756377319903,
+      "method": "sim-encoder-window-v1",
+      "observations": [
+        "obs_cefdd213dd9342208be741a25788bf39",
+        "obs_ffe93b6e22624ff391fc68d9b5b5b5ef",
+        "obs_142bb7719bdc4e45900acdb597ee770e"
+      ],
+      "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+      "simulated": true,
+      "status": "succeeded",
+      "window": [
+        1789448748.900245,
+        1789448748.949666
+      ]
+    },
+    "program_version": "9f4bb94fa648abcc7fb931168204ab19a9a212747bf03d075e6d91ebbe6851f6",
+    "status": "exited",
+    "timestamp": 1789448748.975799,
+    "type": "finished",
+    "seq": 57
+  }
+]
