@@ -1,0 +1,16 @@
+{
+  "checked": "2026-09-15",
+  "http_status": 200,
+  "sources": [
+    {
+      "url": "https://www.anthropic.com/news/model-hardware-standard-research-preview",
+      "sha256": "1443e79fb96ddc87fbfd4a594abaff88c319176ddf13ec504219a255db45d92a",
+      "bytes": 399555
+    },
+    {
+      "url": "https://www.modelhardwarestandard.com/",
+      "sha256": "5555c4933fd82e43f9dd860f265f31c5517c5b925f5bcb41d33ff73050fdc0b8",
+      "bytes": 10430
+    }
+  ]
+}

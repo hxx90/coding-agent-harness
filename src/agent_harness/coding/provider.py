@@ -14,6 +14,7 @@ import httpx
 
 from agent_harness.trace import Redactor
 
+from .media import MediaStore, references
 from .settings import ProviderSettings
 from .types import Cancelled, CodingError, Completion, Json, ToolCall
 
@@ -51,8 +52,11 @@ async def interruptible(operation: Coroutine[Any, Any, T], stop: threading.Event
 
 
 class Provider:
-    def __init__(self, settings: ProviderSettings) -> None:
+    def __init__(
+        self, settings: ProviderSettings, media: MediaStore | None = None
+    ) -> None:
         self.settings = settings
+        self.media = media
         self.redactor = Redactor([settings.api_key] if settings.api_key else [])
 
     def _headers(self) -> dict[str, str]:
@@ -301,6 +305,10 @@ class Provider:
         stop: threading.Event,
     ) -> Completion:
         self._configured()
+        if self.media:
+            messages = self.media.provider_messages(messages)
+        elif references(messages):
+            raise CodingError("media_unavailable", "This provider has no media store")
         return asyncio.run(
             interruptible(self._complete(messages, tools, on_text), stop)
         )

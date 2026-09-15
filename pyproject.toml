@@ -17,6 +17,7 @@ dependencies = [
 
 [project.scripts]
 agent-harness = "agent_harness.cli:main"
+robo = "agent_harness.robo.cli:main"
 
 [project.optional-dependencies]
 web = ["streamlit>=1.37,<2"]
@@ -35,7 +36,7 @@ where = ["src"]
 agent_harness = ["website_runtime_smoke.js"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests/unit", "tests/integration", "tests/cli"]
+testpaths = ["tests/unit", "tests/integration", "tests/cli", "tests/robo"]
 addopts = "-q"
 markers = [
   "integration: deterministic Harness integration tests",
@@ -43,7 +44,7 @@ markers = [
 
 [tool.mypy]
 python_version = "3.11"
-files = ["src/agent_harness/coding", "src/agent_harness/cli.py", "src/agent_harness/sandbox.py", "scripts/cli_smoke.py"]
+files = ["src/agent_harness/coding", "src/agent_harness/robo", "src/agent_harness/cli.py", "src/agent_harness/sandbox.py", "scripts/cli_smoke.py"]
 check_untyped_defs = true
 disallow_untyped_defs = true
 no_implicit_optional = true

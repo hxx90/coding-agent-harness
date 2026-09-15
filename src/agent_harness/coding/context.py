@@ -8,6 +8,7 @@ from collections.abc import Callable, Iterable
 
 from agent_harness.trace import Redactor
 
+from .media import MediaStore, text_content
 from .types import CodingError, Json
 from .workspace import Workspace
 
@@ -25,6 +26,10 @@ Do not expose credentials or private reasoning. Provide concise answers and usef
 
 def system_prompt(workspace: Workspace, mode: str, skills: list[Json]) -> str:
     parts = [POLICY, f"Project: {workspace.root}\nMode: {mode}"]
+    if workspace.settings.robo_home:
+        from agent_harness.robo.tools import POLICY as ROBO_POLICY
+
+        parts.append(ROBO_POLICY)
     for instruction in workspace.instructions():
         parts.append(
             f"Project instructions ({instruction['path']}):\n{instruction['content']}"
@@ -37,13 +42,35 @@ def system_prompt(workspace: Workspace, mode: str, skills: list[Json]) -> str:
     return "\n\n".join(parts)
 
 
-def attach(workspace: Workspace, prompt: str, names: Iterable[str]) -> str:
+def attach(workspace: Workspace, prompt: str, names: Iterable[str]) -> str | list[Json]:
     result = prompt
+    images = []
     for count, name in enumerate(names, 1):
         if count > 10:
-            raise CodingError(
-                "attachment_limit", "At most ten text attachments are allowed"
+            raise CodingError("attachment_limit", "At most ten attachments are allowed")
+        path = workspace.path(name)
+        mime = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".webp": "image/webp",
+        }.get(path.suffix.lower())
+        if mime:
+            if path.stat().st_size > 2 * 1024 * 1024:
+                raise CodingError("media_limit", "Image attachment exceeds 2 MiB")
+            images.append(
+                MediaStore(workspace.settings.data_dir / "media").put(
+                    path.read_bytes(),
+                    mime,
+                    metadata={
+                        "source": name,
+                        "received_at": path.stat().st_mtime,
+                        "kind": "file_attachment",
+                        "sampled_at": None,
+                    },
+                )
             )
+            continue
         content = workspace.text(name)
         if len(content) > 64_000:
             raise CodingError(
@@ -55,7 +82,7 @@ def attach(workspace: Workspace, prompt: str, names: Iterable[str]) -> str:
         raise CodingError(
             "attachment_limit", "Prompt and attachments exceed 256,000 characters"
         )
-    return result
+    return [{"type": "text", "text": result}, *images] if images else result
 
 
 def request_messages(
@@ -77,7 +104,11 @@ def request_messages(
         )
     # First bound old tool output while leaving the newest four messages intact.
     for message in result[1:-4]:
-        if message.get("role") == "tool" and len(message.get("content", "")) > 2000:
+        if (
+            message.get("role") == "tool"
+            and isinstance(message.get("content"), str)
+            and len(message.get("content", "")) > 2000
+        ):
             message["content"] = (
                 message["content"][:2000]
                 + "\n[Earlier tool output shortened; reread the source.]"
@@ -129,7 +160,9 @@ def _checkpoint(removed: list[Json]) -> str:
                 "Called " + call["function"]["name"] for call in message["tool_calls"]
             )
         elif message["role"] in {"user", "assistant"} and message.get("content"):
-            notes.append(message["role"] + ": " + message["content"][:500])
+            notes.append(
+                message["role"] + ": " + text_content(message["content"])[:500]
+            )
     return (
         "Earlier conversation checkpoint (not source code; consult the full session for details):\n"
         + "\n".join(notes[-10:])[-5000:]

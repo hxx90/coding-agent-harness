@@ -143,6 +143,7 @@ class ExtraTool:
     execute: Callable[[Json], Json]
     target: Callable[[Json], str]
     plan_safe: bool = False
+    repeat_safe: bool = False
 
 
 class ToolSet:
@@ -174,6 +175,9 @@ class ToolSet:
         ):
             raise CodingError("duplicate_tool", f"Duplicate tool: {name}")
         self.extras[name] = tool
+
+    def repeat_safe(self, name: str) -> bool:
+        return name in self.extras and self.extras[name].repeat_safe
 
     def schemas(self) -> list[Json]:
         definitions = [*SCHEMAS, *(extra.definition for extra in self.extras.values())]

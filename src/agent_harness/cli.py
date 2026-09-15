@@ -64,6 +64,9 @@ def parser() -> argparse.ArgumentParser:
         "--api-key-env", help="Environment variable containing the API key"
     )
     common.add_argument("--data-dir")
+    common.add_argument(
+        "--robo-home", help="Connect Robo tools to an independent execution host"
+    )
     common.add_argument("--mode", choices=["plan", "build"])
     common.add_argument("--max-turns", type=int)
     common.add_argument("--max-tokens", type=int)

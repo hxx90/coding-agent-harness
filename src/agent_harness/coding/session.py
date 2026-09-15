@@ -17,6 +17,7 @@ from agent_harness.trace import SENSITIVE_NAME_RE, Redactor
 
 from .changes import ChangeJournal
 from .context import StreamingRedactor, attach, request_messages, system_prompt
+from .media import MediaStore, redact_content, tool_content
 from .permissions import Approval, Permissions
 from .provider import Model, Provider
 from .settings import Settings
@@ -40,7 +41,9 @@ class CodingSession:
         child: bool = False,
     ) -> None:
         self.settings = settings
-        self.model = model or Provider(settings.provider)
+        self.model = model or Provider(
+            settings.provider, MediaStore(settings.data_dir / "media")
+        )
         self.store = SessionStore(settings.data_dir)
         self.state = (
             self.store.load(self.store.resolve(session_id, settings.project))
@@ -101,14 +104,22 @@ class CodingSession:
                 pending[call["id"]] = call
             if message["role"] == "tool":
                 pending.pop(message.get("tool_call_id"), None)
-        for call_id in pending:
+        for call_id, pending_call in pending.items():
+            outcome: Json = {"error": "interrupted_operation", "message": reason}
+            if (
+                self.settings.robo_home
+                and pending_call["function"]["name"] == "program_run"
+            ):
+                from agent_harness.robo.tools import recover_submission
+
+                outcome = recover_submission(
+                    self.settings.robo_home, pending_call, reason
+                )
             self.state["messages"].append(
                 {
                     "role": "tool",
                     "tool_call_id": call_id,
-                    "content": json.dumps(
-                        {"error": "interrupted_operation", "message": reason}
-                    ),
+                    "content": json.dumps(outcome),
                 }
             )
         self.state.pop("pending", None)
@@ -201,7 +212,9 @@ class CodingSession:
         partial: list[str] = []
         stream: StreamingRedactor | None = None
         try:
-            content = self.redactor.text(attach(self.workspace, prompt, attachments))
+            content = redact_content(
+                attach(self.workspace, prompt, attachments), self.redactor
+            )
             self.state["active"] = {
                 "start": len(self.state["messages"]),
                 "changes": {},
@@ -349,7 +362,9 @@ class CodingSession:
                         raise Cancelled()
                     fingerprint = call.name + ":" + call.arguments
                     repetitions[fingerprint] = repetitions.get(fingerprint, 0) + 1
-                    if repetitions[fingerprint] > 5:
+                    if repetitions[fingerprint] > 5 and not tools.repeat_safe(
+                        call.name
+                    ):
                         raise CodingError(
                             "no_progress",
                             "The same tool operation repeated six times; inspect results before continuing",
@@ -383,12 +398,13 @@ class CodingSession:
                         }
                         if exc.code in {"permission_required", "cancelled"}:
                             fatal = exc
+                    images = outcome.pop("_images", [])
                     outcome = self.redactor.value(outcome)
                     self.state["messages"].append(
                         {
                             "role": "tool",
                             "tool_call_id": call.id,
-                            "content": json.dumps(outcome, ensure_ascii=False),
+                            "content": tool_content(outcome, images),
                         }
                     )
                     self.state["pending"].remove(call.id)

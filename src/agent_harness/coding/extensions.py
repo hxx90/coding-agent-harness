@@ -332,6 +332,10 @@ class Extensions:
         self.clients: list[MCPClient] = []
 
     def open(self) -> None:
+        if self.session.settings.robo_home and not self.session.child:
+            from agent_harness.robo.tools import register
+
+            register(self.session, self.tools, self.session.settings.robo_home)
         self.tools.register(
             ExtraTool(
                 schema(

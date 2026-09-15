@@ -19,6 +19,7 @@ from filelock import FileLock, Timeout
 
 from agent_harness.trace import Redactor
 
+from .media import MediaStore, validate_content
 from .types import CodingError, Json
 
 MAX_SESSION_BYTES = 512 * 1024 * 1024
@@ -42,13 +43,14 @@ def atomic_json(path: Path, value: Any) -> None:
 
 class SessionStore:
     def __init__(self, data_dir: Path):
+        self.media = MediaStore(data_dir / "media")
         self.root = data_dir / "cli" / "sessions"
         self.root.mkdir(parents=True, exist_ok=True)
         os.chmod(self.root, 0o700)
 
     def create(self, project: Path, model: str, mode: str = "build") -> Json:
         state: Json = {
-            "schema_version": 1,
+            "schema_version": 2,
             "id": uuid.uuid4().hex,
             "project": str(project.resolve()),
             "model": model,
@@ -117,7 +119,7 @@ class SessionStore:
 
     @staticmethod
     def _validate(state: Any, *, history: bool = True) -> None:
-        if not isinstance(state, dict) or state.get("schema_version") != 1:
+        if not isinstance(state, dict) or state.get("schema_version") not in {1, 2}:
             raise ValueError("unsupported session format")
         for key in ("id", "project", "model", "mode", "title", "status"):
             if not isinstance(state.get(key), str):
@@ -144,10 +146,7 @@ class SessionStore:
             raise TypeError("invalid usage")
         pending: set[str] = set()
         for message in state["messages"]:
-            if message.get("content") is not None and not isinstance(
-                message["content"], str
-            ):
-                raise ValueError("invalid message content")
+            validate_content(message.get("content"))
             calls = message.get("tool_calls", [])
             if not isinstance(calls, list):
                 raise TypeError("invalid tool calls")
@@ -311,7 +310,15 @@ class SessionStore:
         for message in state["messages"]:
             message.pop("reasoning_content", None)
             message.pop("reasoning_details", None)
-        atomic_json(destination, Redactor().value(state))
+        exported = Redactor().value(state)
+        # Content IDs and binary encodings are not prose: preserve them exactly.
+        for original, copied in zip(state["messages"], exported["messages"]):
+            if isinstance(original.get("content"), list):
+                for part, target in zip(original["content"], copied["content"]):
+                    if part["type"] == "image_ref":
+                        target.update(part)
+        exported["media_blobs"] = self.media.export(state["messages"])
+        atomic_json(destination, exported)
 
     def import_session(self, source: Path, project: Path) -> Json:
         try:
@@ -319,6 +326,7 @@ class SessionStore:
                 raise ValueError("session exceeds size limit")
             state = json.loads(source.read_text(encoding="utf-8"))
             self._validate(state, history=False)
+            self.media.restore(state["messages"], state.pop("media_blobs", {}))
         except (OSError, ValueError, TypeError, KeyError) as exc:
             raise CodingError(
                 "invalid_session", f"Cannot import session: {exc}"

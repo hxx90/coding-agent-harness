@@ -46,6 +46,7 @@ class Settings:
     permission_rules: tuple[Json, ...] = ()
     mcp: Json = field(default_factory=dict, repr=False)
     skill_dirs: tuple[Path, ...] = ()
+    robo_home: Path | None = None
 
     def public(self) -> Json:
         data = asdict(self)
@@ -290,6 +291,11 @@ def load_settings(
             raise CodingError("configuration", f"mcp.{name}.env must contain strings")
     return Settings(
         project=root,
+        robo_home=Path(str(args.get("robo_home") or env["ROBO_HOME"]))
+        .expanduser()
+        .resolve()
+        if args.get("robo_home") or env.get("ROBO_HOME")
+        else None,
         data_dir=data_dir,
         provider=ProviderSettings(
             base_url=base_url,
