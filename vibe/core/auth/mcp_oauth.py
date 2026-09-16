@@ -24,6 +24,7 @@ from mcp.types import LATEST_PROTOCOL_VERSION
 from pydantic import AnyUrl, BaseModel, ConfigDict
 
 from vibe import __version__
+from vibe.branding import PRODUCT_NAME
 from vibe.core.config import MCPHttp, MCPOAuth, MCPStreamableHttp
 from vibe.utils.http import VibeAsyncHTTPClient, build_ssl_context
 from vibe.utils.keyring import (
@@ -33,7 +34,7 @@ from vibe.utils.keyring import (
 )
 
 _USERNAME_PREFIX: Final = "mcp-oauth"
-_CLIENT_NAME: Final = "Mistral Vibe"
+_CLIENT_NAME: Final = PRODUCT_NAME
 _LOGIN_TIMEOUT_SECONDS: Final = 300.0
 # What a streamable HTTP endpoint accepts: a POST that says both, per the spec.
 _MCP_ACCEPT: Final = "application/json, text/event-stream"
@@ -351,34 +352,24 @@ async def delete_oauth_credentials(alias: str) -> None:
 
 
 _LOGO_SVG: Final = (
-    '<svg class="mark" viewBox="0 0 162 162" xmlns="http://www.w3.org/2000/svg" '
-    'aria-hidden="true">'
-    '<path d="M50.9987 32.0001H30.9987V50.0001H50.9987V32.0001Z"/>'
-    '<path d="M130.999 32.0001H110.999V50.0001H130.999V32.0001Z"/>'
-    '<path d="M90.9988 92.0002H70.9988V110H90.9988V92.0002Z"/>'
-    '<path d="M50.9987 92.0002H30.9987V110H50.9987V92.0002Z"/>'
-    '<path d="M130.999 92.0002H110.999V110H130.999V92.0002Z"/>'
-    '<path d="M70.9987 52.0004H30.9987V70.0004H70.9987V52.0004Z"/>'
-    '<path d="M71.0002 112H11V130.001H71.0002V112Z"/>'
-    '<path d="M151 112H90.9998V130.001H151V112Z"/>'
-    '<path d="M130.999 72.0002H30.9987V90.0003H130.999V72.0002Z"/>'
-    '<path d="M131 52.0004H90.9998V70.0004H131V52.0004Z"/>'
+    '<svg class="mark" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" '
+    'role="img" aria-label="Robo radish logo">'
+    '<path d="M118 70C92 66 66 48 58 20C85 17 112 34 128 59C131 33 149 12 177 8C181 34 163 60 139 72" fill="#49A96C"/>'
+    '<path d="M126 65C116 43 116 24 128 8C143 25 143 48 135 68" fill="#65BD73"/>'
+    '<path d="M128 58C177 58 207 88 204 131C201 169 176 196 140 209L128 238L116 211C77 202 51 174 51 132C51 87 80 58 128 58Z" fill="#F45B3A"/>'
+    '<path d="M87 117H106V136H87V117ZM150 117H169V136H150V117Z" fill="#17323B"/>'
+    '<path d="M93 158C111 175 145 175 163 158" fill="none" stroke="#17323B" stroke-width="10" stroke-linecap="round"/>'
+    '<circle cx="96" cy="126" r="3" fill="white"/>'
+    '<circle cx="159" cy="126" r="3" fill="white"/>'
     "</svg>"
 )
 
 _FAVICON_DATA_URL: Final = (
     "data:image/svg+xml;utf8,"
-    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 162 162' fill='%23FA500F'>"
-    "<path d='M50.9987 32.0001H30.9987V50.0001H50.9987V32.0001Z'/>"
-    "<path d='M130.999 32.0001H110.999V50.0001H130.999V32.0001Z'/>"
-    "<path d='M90.9988 92.0002H70.9988V110H90.9988V92.0002Z'/>"
-    "<path d='M50.9987 92.0002H30.9987V110H50.9987V92.0002Z'/>"
-    "<path d='M130.999 92.0002H110.999V110H130.999V92.0002Z'/>"
-    "<path d='M70.9987 52.0004H30.9987V70.0004H70.9987V52.0004Z'/>"
-    "<path d='M71.0002 112H11V130.001H71.0002V112Z'/>"
-    "<path d='M151 112H90.9998V130.001H151V112Z'/>"
-    "<path d='M130.999 72.0002H30.9987V90.0003H130.999V72.0002Z'/>"
-    "<path d='M131 52.0004H90.9998V70.0004H131V52.0004Z'/>"
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>"
+    "<path d='M29 18C22 17 16 12 14 5C21 4 28 8 32 15C33 8 37 3 44 2C45 9 41 15 35 18' fill='%2349A96C'/>"
+    "<path d='M32 15C44 15 52 22 51 33C50 42 44 49 35 52L32 60L29 53C19 50 13 43 13 33C13 22 20 15 32 15Z' fill='%23F45B3A'/>"
+    "<path d='M22 30H27V35H22ZM37 30H42V35H37Z' fill='%2317323B'/>"
     "</svg>"
 )
 
@@ -394,7 +385,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sa
         box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.12);
         text-align: center; max-width: 28rem; }
 .mark { width: 64px; height: 64px; display: block; margin: 0 auto 1.25rem; }
-.mark path { fill: #FA500F; }
 h1 { font-size: 1.4rem; margin: 0 0 .5rem; font-weight: 600; }
 p { margin: 0; opacity: .7; }
 """
@@ -422,15 +412,18 @@ def _render_page(*, title: str, heading: str, body: str) -> bytes:
 
 
 _SUCCESS_HTML: Final = _render_page(
-    title="Mistral Vibe - Login complete",
+    title=f"{PRODUCT_NAME} - Login complete",
     heading="Login complete",
-    body="You can close this tab and return to Mistral Vibe.",
+    body=f"You can close this tab and return to {PRODUCT_NAME}.",
 )
 
 _ERROR_HTML: Final = _render_page(
-    title="Mistral Vibe - Login failed",
+    title=f"{PRODUCT_NAME} - Login failed",
     heading="Login failed",
-    body="The authorization server did not return an authorization code. Return to Mistral Vibe and try again.",
+    body=(
+        "The authorization server did not return an authorization code. "
+        f"Return to {PRODUCT_NAME} and try again."
+    ),
 )
 
 

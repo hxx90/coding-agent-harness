@@ -7,8 +7,9 @@ from textual.app import ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Center, Horizontal, Vertical
 
+from vibe.branding import PRODUCT_NAME
 from vibe.cli.textual_ui.shortcut_hints import shortcut, shortcut_hint
-from vibe.cli.textual_ui.widgets.banner.petit_chat import PetitChat
+from vibe.cli.textual_ui.widgets.banner.robo_mark import RoboMark
 from vibe.cli.textual_ui.widgets.no_markup_static import NoMarkupStatic
 from vibe.core.config import ProviderConfig
 from vibe.setup.onboarding.base import OnboardingScreen
@@ -38,9 +39,9 @@ class AuthMethodScreen(OnboardingScreen):
         with Vertical(id="auth-method-content", classes="onboarding-content"):
             with Center():
                 with Vertical(id="auth-method-panel", classes="onboarding-panel"):
-                    yield PetitChat(id="auth-method-chat", classes="onboarding-chat")
+                    yield RoboMark(id="auth-method-chat", classes="onboarding-chat")
                     yield NoMarkupStatic(
-                        "Welcome to Mistral Vibe",
+                        f"Welcome to {PRODUCT_NAME}",
                         id="auth-method-title",
                         classes="onboarding-heading",
                     )

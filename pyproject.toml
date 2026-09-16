@@ -151,6 +151,9 @@ url = "https://pypi.org/simple"
 include = ["vibe/"]
 
 [project.scripts]
+robo = "vibe.cli.entrypoint:main"
+robo-acp = "vibe.acp.entrypoint:main"
+robo-app-server = "vibe.app_server.stdio:main"
 vibe = "vibe.cli.entrypoint:main"
 vibe-acp = "vibe.acp.entrypoint:main"
 vibe-app-server = "vibe.app_server.stdio:main"

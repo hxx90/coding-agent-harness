@@ -8,6 +8,7 @@ import sys
 
 from vibe import __version__
 from vibe._experimental_harness import add_experimental_harness_argument
+from vibe.branding import PRODUCT_NAME
 from vibe.core.config.default_orchestrator import build_default_orchestrator
 from vibe.core.config.harness_files import init_harness_files_manager
 from vibe.core.paths import HISTORY_FILE, LOG_FILE
@@ -29,7 +30,7 @@ class Arguments:
 
 
 def parse_arguments() -> Arguments:
-    parser = argparse.ArgumentParser(description="Run Mistral Vibe in ACP mode")
+    parser = argparse.ArgumentParser(description=f"Run {PRODUCT_NAME} in ACP mode")
     parser.add_argument(
         "-v", "--version", action="version", version=f"%(prog)s {__version__}"
     )

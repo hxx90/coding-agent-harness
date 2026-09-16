@@ -8,6 +8,7 @@ from typing import Any
 from rich import print as rprint
 from textual.app import App
 
+from vibe.branding import PRODUCT_NAME, PRODUCT_SLUG
 from vibe.cli.clipboard import copy_to_clipboard
 from vibe.cli.theme import resolve_auto_theme, resolve_theme, resolve_theme_name
 from vibe.core.config import VibeConfigSchema
@@ -318,7 +319,8 @@ def run_onboarding(
             )
         case "completed":
             rprint(
-                '\nSetup complete 🎉. Run "vibe" to start using the Mistral Vibe CLI.\n'
+                f'\nSetup complete 🎉. Run "{PRODUCT_SLUG}" to start using the '
+                f"{PRODUCT_NAME} CLI.\n"
             )
     theme = (
         onboarding_app.selected_theme

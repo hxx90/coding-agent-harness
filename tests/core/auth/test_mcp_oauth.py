@@ -445,7 +445,7 @@ class TestBuildOAuthProvider:
         )
         md = provider.context.client_metadata
         assert md.scope == "read write"
-        assert md.client_name == "Mistral Vibe"
+        assert md.client_name == "Robo"
         assert md.token_endpoint_auth_method == "none"
         assert md.grant_types == ["authorization_code", "refresh_token"]
         assert md.redirect_uris is not None

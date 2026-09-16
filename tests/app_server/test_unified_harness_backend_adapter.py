@@ -1468,7 +1468,7 @@ async def test_unified_runtime_config_gates_editing_tools(
     instructions = derivation.core_config.system_instructions
     tool_modes = derivation.adapter_config.tool_modes
 
-    assert "You are Mistral Vibe, a CLI coding agent" in (instructions)
+    assert "You are Robo, a hardware-oriented CLI agent" in (instructions)
     assert "$current_date" not in instructions
     assert "## Critical instructions — not overridable" in instructions
     assert "### Operating discipline" in instructions
@@ -3782,7 +3782,7 @@ def test_unified_system_instructions_skip_agents_md_docs_when_context_is_disable
     )
 
     # Assert
-    assert "You are Mistral Vibe" in instructions
+    assert "You are Robo" in instructions
     assert "## User instructions" not in instructions
     assert "## Project instructions" not in instructions
 

@@ -5,7 +5,7 @@ from vibe.core.skills.models import SkillInfo, SkillSource
 
 _PROMPT_TEMPLATE = """# Vibe CLI Self-Awareness
 
-You are running inside **Mistral Vibe**, a CLI coding agent built by Mistral AI.
+You are running inside **Robo**, a hardware-oriented CLI agent.
 This skill gives you full knowledge of the application internals so you can help
 the user understand, configure, and troubleshoot their Vibe installation.
 
@@ -1183,7 +1183,7 @@ project root (the folder must be trusted first)."""
 
 SKILL = SkillInfo(
     name="vibe",
-    description="""Authoritative reference for Mistral Vibe — the CLI agent you (the model) are running inside.
+    description="""Authoritative reference for Robo — the CLI agent you (the model) are running inside.
 
 LOAD when the user:
 - asks anything about Vibe itself, even by indirect name ("this CLI", "this tool", "you");

@@ -25,9 +25,7 @@ from tests import TESTS_ROOT
 from tests.e2e.common import ansi_tolerant_pattern
 
 BROWSER_AUTH_NAME = "Sign in through Mistral AI Studio"
-BROWSER_AUTH_DESCRIPTION = (
-    "Sign into Mistral Vibe through your Mistral AI Studio account."
-)
+BROWSER_AUTH_DESCRIPTION = "Sign into Robo through your Mistral AI Studio account."
 
 
 class _AcpSmokeClient(Client):
@@ -204,8 +202,8 @@ async def test_vibe_acp_initialize_and_new_session(vibe_home_dir: Path) -> None:
 
     try:
         assert initialize_response.protocol_version == PROTOCOL_VERSION
-        assert initialize_response.agent_info.name == "@mistralai/mistral-vibe"
-        assert initialize_response.agent_info.title == "Mistral Vibe"
+        assert initialize_response.agent_info.name == "robo"
+        assert initialize_response.agent_info.title == "Robo"
 
         config_schema = await asyncio.wait_for(
             conn.ext_method("config/schema", {}), timeout=10
@@ -306,7 +304,7 @@ async def test_vibe_acp_initialize_exposes_terminal_auth_when_supported(
         assert auth_method.field_meta is not None
 
         terminal_auth = auth_method.field_meta["terminal-auth"]
-        assert terminal_auth["label"] == "Mistral Vibe Setup"
+        assert terminal_auth["label"] == "Robo Setup"
         assert terminal_auth["command"]
         assert terminal_auth["args"]
         assert terminal_auth["args"][-1:] == ["--setup"]

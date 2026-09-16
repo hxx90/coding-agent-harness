@@ -1,8 +1,8 @@
 # Proxy Setup
 
-Mistral Vibe supports proxy configuration for environments that require network traffic to go through a proxy server. Proxy settings are shared between the CLI and ACP — configuring them in one will apply to both.
+Robo supports proxy configuration for environments that require network traffic to go through a proxy server. Proxy settings are shared between the CLI and ACP — configuring them in one will apply to both.
 
-## Using Mistral Vibe CLI
+## Using Robo CLI
 
 Configure proxy settings through the interactive form:
 
@@ -22,7 +22,7 @@ Once all variables are configured, **restart the conversation** for changes to t
 
 ## Supported Environment Variables
 
-Mistral Vibe uses HTTPX under the hood through Vibe's shared HTTP client
+Robo uses HTTPX under the hood through its shared HTTP client
 wrapper. Vibe-owned HTTP clients read the standard proxy and certificate
 environment variables below, and handle `NO_PROXY` CIDR rules without relying
 on HTTPX's environment parsing.

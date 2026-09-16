@@ -110,5 +110,5 @@ def test_fresh_wheel_install_can_spawn_cli_and_complete_happy_path(
             child.close()
 
     output = captured.getvalue()
-    assert "Welcome to Mistral Vibe" not in output
+    assert "Welcome to Robo" not in output
     assert streaming_mock_server.requests[-1].get("model") == "mock-model"

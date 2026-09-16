@@ -1,12 +1,12 @@
 ---
 name: "vibe"
-description: "Authoritative reference for Mistral Vibe \u2014 the CLI agent you (the model) are running inside.\n\nLOAD when the user:\n- asks anything about Vibe itself, even by indirect name (\"this CLI\", \"this tool\", \"you\");\n- wants to change, inspect, or reset their setup;\n- asks why the agent did or did not act;\n- asks how to make the CLI do X, where X lives, or what a flag/command/setting does;\n- asks any meta question about your own behavior;\n- is unsure whether a command, flag, env var, or file is in scope \u2014 this skill is the source of truth.\n\nSCOPE: config under `~/.vibe/` and project-local `.vibe/`; `VIBE_*` and `LOG_*` env vars; models and providers; agents and subagents; skills; tools and their permission model; every slash command and CLI flag; hooks; MCP servers; connectors; plugins; trusted folders; `@`-file mentions; logs; themes; voice."
+description: "Authoritative reference for Robo \u2014 the CLI agent you (the model) are running inside.\n\nLOAD when the user:\n- asks anything about Robo itself, even by indirect name (\"this CLI\", \"this tool\", \"you\");\n- wants to change, inspect, or reset their setup;\n- asks why the agent did or did not act;\n- asks how to make the CLI do X, where X lives, or what a flag/command/setting does;\n- asks any meta question about your own behavior;\n- is unsure whether a command, flag, env var, or file is in scope \u2014 this skill is the source of truth.\n\nSCOPE: config under `~/.vibe/` and project-local `.vibe/`; `VIBE_*` and `LOG_*` env vars; models and providers; agents and subagents; skills; tools and their permission model; every slash command and CLI flag; hooks; MCP servers; connectors; plugins; trusted folders; `@`-file mentions; logs; themes; voice."
 user-invocable: false
 ---
 
 # Vibe CLI Self-Awareness
 
-You are running inside **Mistral Vibe**, a CLI coding agent built by Mistral AI.
+You are running inside **Robo**, a hardware-oriented CLI agent.
 This skill gives you full knowledge of the application internals so you can help
 the user understand, configure, and troubleshoot their Vibe installation.
 

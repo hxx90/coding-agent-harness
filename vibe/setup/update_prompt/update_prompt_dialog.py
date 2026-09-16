@@ -12,7 +12,7 @@ from textual.containers import CenterMiddle, Horizontal
 from textual.message import Message
 
 from vibe.cli.textual_ui.shortcut_hints import shortcut, shortcut_hint
-from vibe.cli.textual_ui.widgets.banner.petit_chat import PetitChat
+from vibe.cli.textual_ui.widgets.banner.robo_mark import RoboMark
 from vibe.cli.textual_ui.widgets.no_markup_static import NoMarkupStatic
 from vibe.cli.theme import resolve_theme
 from vibe.cli.update_notifier.update import do_update
@@ -103,11 +103,11 @@ class UpdatePromptDialog(CenterMiddle):
                 classes="update-dialog-help",
             )
 
-            yield PetitChat(id="update-dialog-spinner")
+            yield RoboMark(id="update-dialog-spinner")
             yield NoMarkupStatic("Updating mistral-vibe…", id="update-dialog-status")
 
     async def on_mount(self) -> None:
-        spinner = self.query_one("#update-dialog-spinner", PetitChat)
+        spinner = self.query_one("#update-dialog-spinner", RoboMark)
         spinner.display = False
         status = self.query_one("#update-dialog-status", NoMarkupStatic)
         status.display = False
@@ -154,7 +154,7 @@ class UpdatePromptDialog(CenterMiddle):
         self.query_one("#update-options-container", Horizontal).display = False
         self.query_one(".update-dialog-help", NoMarkupStatic).display = False
 
-        self.query_one("#update-dialog-spinner", PetitChat).display = True
+        self.query_one("#update-dialog-spinner", RoboMark).display = True
         self.query_one("#update-dialog-status", NoMarkupStatic).display = True
 
         try:

@@ -6015,7 +6015,7 @@ class VibeApp(App):  # noqa: PLR0904
             return
         with self.suspend():
             rprint(
-                "Mistral Vibe has been suspended. Run [bold cyan]fg[/bold cyan] to bring Mistral Vibe back."
+                "Robo has been suspended. Run [bold cyan]fg[/bold cyan] to bring Robo back."
             )
             os.kill(os.getpid(), signal.SIGTSTP)
 

@@ -10,6 +10,7 @@ from acp.schema import AuthenticateResponse, AuthMethodAgent
 from keyring.errors import KeyringError
 
 from vibe.acp.exceptions import ConfigurationError, InternalError, InvalidRequestError
+from vibe.branding import PRODUCT_NAME
 from vibe.core.config import ProviderConfig, load_dotenv_values
 from vibe.core.config._defaults import (
     DEFAULT_CONSOLE_BASE_URL,
@@ -380,7 +381,7 @@ class AcpAuthController:
             id=method_id,
             name="Sign in through Mistral AI Studio",
             description=(
-                "Sign into Mistral Vibe through your Mistral AI Studio account."
+                f"Sign into {PRODUCT_NAME} through your Mistral AI Studio account."
             ),
         )
 

@@ -10,6 +10,7 @@ from vibe.app_server.transport import (
     BinaryLineWriter,
     StdioJsonRpcTransport,
 )
+from vibe.branding import PRODUCT_NAME
 from vibe.core.config.harness_files import init_harness_files_manager
 from vibe.core.paths import LOG_FILE
 from vibe.observability.logging import init_file_logging
@@ -37,7 +38,7 @@ async def serve_stdio(
 
 
 def parse_arguments() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the Mistral Vibe app server")
+    parser = argparse.ArgumentParser(description=f"Run the {PRODUCT_NAME} app server")
     harness_group = parser.add_mutually_exclusive_group()
     add_experimental_harness_argument(parser, group=harness_group)
     harness_group.add_argument(

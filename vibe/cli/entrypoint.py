@@ -26,6 +26,7 @@ from vibe._experimental_harness import (
     add_experimental_harness_argument,
     add_smart_approve_argument,
 )
+from vibe.branding import PRODUCT_NAME
 
 # Anything heavier than argparse is imported inside the functions below, after
 # argument parsing, so that --help/--version don't pay for the config stack
@@ -37,7 +38,7 @@ if TYPE_CHECKING:
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run the Mistral Vibe interactive CLI",
+        description=f"Run the {PRODUCT_NAME} interactive CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Commands:\n"

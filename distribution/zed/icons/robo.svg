@@ -1,0 +1,15 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Robo radish logo">
+  <defs>
+    <linearGradient id="root" x1="65" y1="76" x2="186" y2="207" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF7657"/>
+      <stop offset="1" stop-color="#E93F35"/>
+    </linearGradient>
+  </defs>
+  <path d="M118 70C92 66 66 48 58 20C85 17 112 34 128 59C131 33 149 12 177 8C181 34 163 60 139 72" fill="#49A96C"/>
+  <path d="M126 65C116 43 116 24 128 8C143 25 143 48 135 68" fill="#65BD73"/>
+  <path d="M128 58C177 58 207 88 204 131C201 169 176 196 140 209L128 238L116 211C77 202 51 174 51 132C51 87 80 58 128 58Z" fill="url(#root)"/>
+  <path d="M87 117H106V136H87V117ZM150 117H169V136H150V117Z" fill="#17323B"/>
+  <path d="M93 158C111 175 145 175 163 158" stroke="#17323B" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="96" cy="126" r="3" fill="white"/>
+  <circle cx="159" cy="126" r="3" fill="white"/>
+</svg>

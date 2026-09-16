@@ -178,6 +178,7 @@ from vibe.app_server.protocol import (
     SessionOptions,
 )
 from vibe.app_server.session import AppServerSession, AppServerTurnError
+from vibe.branding import PRODUCT_NAME, PRODUCT_SLUG
 from vibe.observability.logging import logger
 from vibe.observability.sentry import capture_sentry_exception
 from vibe.questions import UserAnswer, UserQuestionRequest, UserQuestionResult
@@ -457,13 +458,13 @@ class VibeAcpAgent(AcpAgent):
                     type="terminal",
                     id="vibe-setup",
                     name="Register your API Key",
-                    description="Register your API Key inside Mistral Vibe",
+                    description=f"Register your API Key inside {PRODUCT_NAME}",
                     args=args,
                     field_meta={
                         "terminal-auth": {
                             "command": command,
                             "args": args,
-                            "label": "Mistral Vibe Setup",
+                            "label": f"{PRODUCT_NAME} Setup",
                         }
                     },
                 )
@@ -487,9 +488,7 @@ class VibeAcpAgent(AcpAgent):
             ),
             protocol_version=PROTOCOL_VERSION,
             agent_info=Implementation(
-                name="@mistralai/mistral-vibe",
-                title="Mistral Vibe",
-                version=__version__,
+                name=PRODUCT_SLUG, title=PRODUCT_NAME, version=__version__
             ),
             auth_methods=cast(Any, auth_methods),
         )

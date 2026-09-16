@@ -1,6 +1,6 @@
 ---
 name: create-plugin
-description: Create a Vibe plugin package — the Agent Plugins 1.0 format with optional Vibe extensions for skills, MCP servers, hooks, knowledge, agents, libraries, and connectors. Use when the user wants to create, scaffold, or author a plugin for Mistral Vibe.
+description: Create a Robo plugin package — the Agent Plugins 1.0 format with optional Robo extensions for skills, MCP servers, hooks, knowledge, agents, libraries, and connectors. Use when the user wants to create, scaffold, or author a plugin for Robo.
 ---
 
 # Create a Vibe Plugin

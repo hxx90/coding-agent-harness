@@ -9,7 +9,7 @@ from textual.validation import Function, ValidationResult
 from textual.widgets import Input
 
 from vibe.cli.textual_ui.shortcut_hints import shortcut, shortcut_hint
-from vibe.cli.textual_ui.widgets.banner.petit_chat import PetitChat
+from vibe.cli.textual_ui.widgets.banner.robo_mark import RoboMark
 from vibe.cli.textual_ui.widgets.no_markup_static import NoMarkupStatic
 from vibe.setup.onboarding.base import OnboardingScreen
 from vibe.setup.onboarding.context import (
@@ -76,7 +76,7 @@ class CustomDomainScreen(OnboardingScreen):
         with Vertical(id="custom-domain-outer", classes="onboarding-content"):
             with Center():
                 with Vertical(id="custom-domain-panel", classes="onboarding-panel"):
-                    yield PetitChat(id="custom-domain-chat", classes="onboarding-chat")
+                    yield RoboMark(id="custom-domain-chat", classes="onboarding-chat")
                     yield NoMarkupStatic(
                         "Use a custom domain",
                         id="custom-domain-title",

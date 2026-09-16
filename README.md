@@ -1,28 +1,19 @@
-# Mistral Vibe
+# Robo
 
-[![PyPI Version](https://img.shields.io/pypi/v/mistral-vibe)](https://pypi.org/project/mistral-vibe)
 [![Python Version](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/downloads/release/python-3120/)
-[![CI Status](https://github.com/mistralai/mistral-vibe/actions/workflows/ci.yml/badge.svg)](https://github.com/mistralai/mistral-vibe/actions/workflows/ci.yml)
-[![License](https://img.shields.io/github/license/mistralai/mistral-vibe)](https://github.com/mistralai/mistral-vibe/blob/main/LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-```
-██████████████████░░
-██████████████████░░
-████  ██████  ████░░
-████    ██    ████░░
-████          ████░░
-████  ██  ██  ████░░
-██      ██      ██░░
-██████████████████░░
-██████████████████░░
-```
+<p align="center">
+  <img src="distribution/zed/icons/robo.svg" alt="Robo 萝卜机器人 Logo" width="144">
+</p>
 
-**Mistral's open-source CLI coding assistant.**
+**面向软件与真实硬件的 AI Agent Harness。**
 
-Mistral Vibe is a command-line coding assistant powered by Mistral's models. It provides a conversational interface to your codebase, allowing you to use natural language to explore, modify, and interact with your projects through a powerful set of tools.
+Robo 是一个面向代码与真实硬件的命令行智能体，基于 Mistral Vibe
+演进而来。它通过自然语言、类型化工具和安全控制来操作代码库，并将逐步支持机器人设备。
 
 > [!WARNING]
-> Mistral Vibe works on Windows, but we officially support and target UNIX environments.
+> Robo 可在 Windows 上运行，但当前主要支持和测试 UNIX 环境。
 
 ### One-line install (recommended)
 
@@ -982,7 +973,7 @@ The `LOG_LEVEL` environment variable overrides the config value at startup. Use 
 
 ## Editors/IDEs
 
-Mistral Vibe can be used in text editors and IDEs that support [Agent Client Protocol](https://agentclientprotocol.com/overview/clients). See the [ACP Setup documentation](docs/acp-setup.md) for setup instructions for various editors and IDEs.
+Robo can be used in text editors and IDEs that support [Agent Client Protocol](https://agentclientprotocol.com/overview/clients). See the [ACP Setup documentation](docs/acp-setup.md) for setup instructions for various editors and IDEs.
 
 ## Resources
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Mistral Vibe Installation Script
+# Robo Installation Script
 # This script installs uv if not present and then installs mistral-vibe using uv
 
 set -euo pipefail
@@ -157,14 +157,14 @@ function install_vibe() {
     info "Installing mistral-vibe from GitHub repository using uv..."
     uv tool install mistral-vibe
 
-    success "Mistral Vibe installed successfully! (commands: vibe, vibe-acp)"
+    success "Robo installed successfully! (commands: robo, robo-acp; legacy aliases: vibe, vibe-acp)"
 }
 
 function update_vibe() {
     info "Updating mistral-vibe from GitHub repository using uv..."
     uv tool upgrade mistral-vibe
 
-    success "Mistral Vibe updated successfully!"
+    success "Robo updated successfully!"
 }
 
 function main() {
@@ -179,7 +179,7 @@ function main() {
     echo "██████████████████░░"
     echo "██████████████████░░"
     echo
-    echo "Starting Mistral Vibe installation..."
+    echo "Starting Robo installation..."
     echo
 
     check_platform

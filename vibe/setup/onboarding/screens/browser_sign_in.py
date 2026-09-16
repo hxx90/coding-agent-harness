@@ -18,7 +18,7 @@ from textual.worker import Worker
 
 from vibe.cli.clipboard import NATIVE_COPY_HINT
 from vibe.cli.textual_ui.shortcut_hints import shortcut, shortcut_hint
-from vibe.cli.textual_ui.widgets.banner.petit_chat import PetitChat
+from vibe.cli.textual_ui.widgets.banner.robo_mark import RoboMark
 from vibe.cli.textual_ui.widgets.no_markup_static import NoMarkupStatic
 from vibe.core.config import ProviderConfig
 from vibe.core.telemetry.types import LaunchContext
@@ -160,9 +160,7 @@ class BrowserSignInScreen(OnboardingScreen):
         with Vertical(id="browser-sign-in-content", classes="onboarding-content"):
             with Center():
                 with Vertical(id="browser-sign-in-panel", classes="onboarding-panel"):
-                    yield PetitChat(
-                        id="browser-sign-in-chat", classes="onboarding-chat"
-                    )
+                    yield RoboMark(id="browser-sign-in-chat", classes="onboarding-chat")
                     self._title_widget = NoMarkupStatic(
                         "Launch browser",
                         id="browser-sign-in-title",

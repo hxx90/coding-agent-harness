@@ -331,7 +331,7 @@ def test_v3_system_prompt_variant_is_available_to_legacy_harness(
 
     prompt = get_universal_system_prompt(config, skill_manager, agent_manager)
 
-    assert prompt.startswith("You are Mistral Vibe, an interactive coding agent.")
+    assert prompt.startswith("You are Robo, an interactive hardware and coding agent.")
     assert "# Harness" in prompt
     assert "invoke it via the `skill` tool" in prompt
     assert "## Instruction hierarchy" not in prompt

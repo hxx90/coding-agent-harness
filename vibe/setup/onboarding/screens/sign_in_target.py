@@ -9,7 +9,7 @@ from textual.binding import Binding, BindingType
 from textual.containers import Center, Horizontal, Vertical
 
 from vibe.cli.textual_ui.shortcut_hints import shortcut, shortcut_hint
-from vibe.cli.textual_ui.widgets.banner.petit_chat import PetitChat
+from vibe.cli.textual_ui.widgets.banner.robo_mark import RoboMark
 from vibe.cli.textual_ui.widgets.no_markup_static import NoMarkupStatic
 from vibe.setup.onboarding.base import OnboardingScreen
 
@@ -39,7 +39,7 @@ class SignInTargetScreen(OnboardingScreen):
         with Vertical(id="sign-in-target-content", classes="onboarding-content"):
             with Center():
                 with Vertical(id="sign-in-target-panel", classes="onboarding-panel"):
-                    yield PetitChat(id="sign-in-target-chat", classes="onboarding-chat")
+                    yield RoboMark(id="sign-in-target-chat", classes="onboarding-chat")
                     yield NoMarkupStatic(
                         "Launch browser",
                         id="sign-in-target-title",

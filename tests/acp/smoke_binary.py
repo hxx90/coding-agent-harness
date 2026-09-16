@@ -144,7 +144,7 @@ async def test_acp_initialize(binary: Path) -> None:
                 )
             if resp.agent_info is None:
                 _fail("agent_info is None")
-            if resp.agent_info.name != "@mistralai/mistral-vibe":
+            if resp.agent_info.name != "robo":
                 _fail(f"unexpected agent name: {resp.agent_info.name}")
 
             print(

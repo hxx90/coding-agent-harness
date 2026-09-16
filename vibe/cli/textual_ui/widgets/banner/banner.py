@@ -11,7 +11,8 @@ from textual.widgets import Static
 from vibe import __version__
 from vibe.app_server.config import ConfigView
 from vibe.app_server.models import MCPSourceKind, MCPSourceStatus, MCPState
-from vibe.cli.textual_ui.widgets.banner.petit_chat import PetitChat
+from vibe.branding import PRODUCT_NAME
+from vibe.cli.textual_ui.widgets.banner.robo_mark import RoboMark
 from vibe.cli.textual_ui.widgets.no_markup_static import NoMarkupStatic
 from vibe.cli.textual_ui.widgets.spinner_text import SpinnerText
 
@@ -72,11 +73,11 @@ class Banner(Static):
 
     def compose(self) -> ComposeResult:
         with VerticalGroup(id="banner-container"):
-            yield PetitChat(animate=self._animated)
+            yield RoboMark(animate=self._animated)
 
             with Vertical(id="banner-info"):
                 with Horizontal(classes="banner-line"):
-                    yield NoMarkupStatic("Mistral Vibe", id="banner-brand")
+                    yield NoMarkupStatic(PRODUCT_NAME, id="banner-brand")
                     yield NoMarkupStatic(" ", classes="banner-spacer")
                     yield NoMarkupStatic(f"v{__version__} · ", classes="banner-meta")
                     yield SpinnerText(id="banner-model")
@@ -106,7 +107,7 @@ class Banner(Static):
 
     def freeze_animation(self) -> None:
         if self._animated:
-            self.query_one(PetitChat).freeze_animation()
+            self.query_one(RoboMark).freeze_animation()
 
     def set_state(  # noqa: PLR0913
         self,
