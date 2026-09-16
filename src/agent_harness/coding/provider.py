@@ -19,6 +19,9 @@ from .settings import ProviderSettings
 from .types import Cancelled, CodingError, Completion, Json, ToolCall
 
 MAX_RESPONSE_CHARS = 2 * 1024 * 1024
+LEGACY_TOKEN_PARAMETER = "max_tokens"
+COMPLETION_TOKEN_PARAMETER = "max_completion_tokens"
+TOKEN_PARAMETER_RETRY_DETAIL = "retry_token_parameter"
 T = TypeVar("T")
 
 
@@ -58,6 +61,7 @@ class Provider:
         self.settings = settings
         self.media = media
         self.redactor = Redactor([settings.api_key] if settings.api_key else [])
+        self._token_parameter = LEGACY_TOKEN_PARAMETER
 
     def _headers(self) -> dict[str, str]:
         result = {"Accept": "application/json, text/event-stream"}
@@ -94,12 +98,26 @@ class Provider:
         code = (
             "authentication" if response.status_code in {401, 403} else "provider_http"
         )
+        details: Json = {"status": response.status_code}
+        try:
+            payload = json.loads(data)
+            error = payload.get("error", {}) if isinstance(payload, dict) else {}
+            if (
+                response.status_code == 400
+                and isinstance(error, dict)
+                and error.get("param") == LEGACY_TOKEN_PARAMETER
+                and error.get("code") == "unsupported_parameter"
+                and COMPLETION_TOKEN_PARAMETER in str(error.get("message", ""))
+            ):
+                details[TOKEN_PARAMETER_RETRY_DETAIL] = COMPLETION_TOKEN_PARAMETER
+        except (TypeError, ValueError):
+            pass
         raise CodingError(
             code,
             self.redactor.text(
                 f"Model service returned HTTP {response.status_code}: {data.decode('utf-8', errors='replace')}"
             ),
-            details={"status": response.status_code},
+            details=details,
         )
 
     def models(self, stop: threading.Event | None = None) -> list[str]:
@@ -320,15 +338,18 @@ class Provider:
             "model": self.settings.model,
             "messages": messages,
             "stream": self.settings.stream,
-            "max_tokens": self.settings.max_output_tokens,
+            self._token_parameter: self.settings.max_output_tokens,
         }
+        token_parameter = self._token_parameter
         if tools:
             payload.update(tools=tools, tool_choice="auto")
         if self.settings.temperature is not None:
             payload["temperature"] = self.settings.temperature
         if self.settings.stream:
             payload["stream_options"] = {"include_usage": True}
-        for attempt in range(3):
+        attempt = 0
+        compatibility_retried = False
+        while attempt < 3:
             emitted = False
 
             def relay(piece: str) -> None:
@@ -354,13 +375,29 @@ class Provider:
                 ):
                     await self._check_status(response)
                     if "text/event-stream" in response.headers.get("content-type", ""):
-                        return await self._stream(response, relay)
+                        result = await self._stream(response, relay)
+                        self._token_parameter = token_parameter
+                        return result
                     result = self._normalize(json.loads(await self._body(response)))
                     if result.text:
                         relay(result.text)
+                    self._token_parameter = token_parameter
                     return result
             except CodingError as exc:
                 status = exc.details.get("status", 0)
+                if (
+                    not emitted
+                    and not compatibility_retried
+                    and exc.details.get(TOKEN_PARAMETER_RETRY_DETAIL)
+                    == COMPLETION_TOKEN_PARAMETER
+                    and LEGACY_TOKEN_PARAMETER in payload
+                ):
+                    payload[COMPLETION_TOKEN_PARAMETER] = payload.pop(
+                        LEGACY_TOKEN_PARAMETER
+                    )
+                    token_parameter = COMPLETION_TOKEN_PARAMETER
+                    compatibility_retried = True
+                    continue
                 if emitted or attempt == 2 or not (status == 429 or status >= 500):
                     raise
             except (httpx.HTTPError, OSError, ValueError) as exc:
@@ -368,5 +405,6 @@ class Provider:
                     raise CodingError(
                         "provider_error", self.redactor.text(str(exc))
                     ) from exc
-            await asyncio.sleep(0.25 * (2**attempt))
+            attempt += 1
+            await asyncio.sleep(0.25 * (2 ** (attempt - 1)))
         raise CodingError("provider_error", "Model request failed after three attempts")

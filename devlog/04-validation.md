@@ -56,3 +56,23 @@
 - 上下文采用有界确定性检查点，可能舍弃早期细节；完整会话仍可查看。当前请求过大明确失败，不截断最新用户约束或工具参数。
 - MCP 仅支持 stdio tools；Skill 元数据限定 name/description；附件只接受项目内 UTF-8 文本。其余产品范围见 01 文档。
 - Token 预算在请求边界检查；缺少服务端计量字段时使用估算值，最终一次响应可能超过阈值。
+
+## 2026-09-16 真实网关兼容性回归
+
+在本机使用 `https://api-gateway.glm.ai` 与 `gpt-5.6-sol` 做了真实连接验证。API Key 仅从环境读取，未写入本目录或测试输出。
+
+最小复现分成两层：
+
+1. 以站点根地址作为 `base_url` 时，CLI 请求 `/models` 得到前端 HTML 404，请求 `/chat/completions` 得到 HTTP 405；改为 `/v1` 后，`/v1/models` 正常返回模型列表，并确认其中包含 `gpt-5.6-sol`。
+2. 首次真实 Chat Completions 请求随后返回结构化 HTTP 400：该模型不接受 `max_tokens`，要求使用 `max_completion_tokens`。
+
+Provider 继续默认发送兼容面更广的 `max_tokens`。只有收到状态码 400、`param=max_tokens`、`code=unsupported_parameter`，且消息明确要求 `max_completion_tokens` 时，才切换参数并额外重试一次；协商成功后在当前 Provider 实例中保留选择，后续 Agent 回合不再重复触发已知 400。该兼容重试不按模型名称硬编码，也不改变普通 400、鉴权失败和 429/5xx 的既有处理。
+
+验证结果：
+
+- 新回归测试先稳定复现 400，修复后确认第一次请求使用 `max_tokens`、协商请求只使用 `max_completion_tokens`，且下一次 completion 直接复用已协商字段。
+- 真实 `gpt-5.6-sol` 最小只读任务返回正常文本，终态为 `completed`，不再出现 405 或参数错误。
+- Provider、Settings 和 CLI 三组相关测试通过；Ruff 与 Mypy 通过。
+- 最终全量共收集并通过 **218 项测试**，`git diff --check` 通过。
+
+本机 `~/.zshrc` 的 `AGENT_HARNESS_BASE_URL` 已修正为 `https://api-gateway.glm.ai/v1`。这是机器本地配置，不属于仓库提交。官方 OpenAI 文档页面在验证时被网络侧返回 403，因此参数迁移依据为真实网关的结构化错误契约，并由确定性 HTTP 回归测试锁定。

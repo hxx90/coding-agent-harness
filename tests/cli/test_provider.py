@@ -143,6 +143,41 @@ def test_only_transient_errors_retry_and_credentials_are_redacted(model_server):
     assert len(requests) == 1
 
 
+def test_negotiates_and_retains_max_completion_tokens_when_provider_requires_it(
+    model_server,
+):
+    client, requests, _ = provider(
+        model_server,
+        [
+            Reply(
+                status=400,
+                body={
+                    "error": {
+                        "message": (
+                            "Unsupported parameter: 'max_tokens' is not supported "
+                            "with this model. Use 'max_completion_tokens' instead."
+                        ),
+                        "param": "max_tokens",
+                        "code": "unsupported_parameter",
+                    }
+                },
+            ),
+            answer("compatible"),
+            answer("cached"),
+        ],
+        max_output_tokens=321,
+    )
+
+    assert complete(client).text == "compatible"
+    assert requests[0]["max_tokens"] == 321
+    assert "max_completion_tokens" not in requests[0]
+    assert requests[1]["max_completion_tokens"] == 321
+    assert "max_tokens" not in requests[1]
+    assert complete(client).text == "cached"
+    assert requests[2]["max_completion_tokens"] == 321
+    assert "max_tokens" not in requests[2]
+
+
 @pytest.mark.parametrize("phase", ["headers", "body"])
 def test_cancel_interrupts_real_http_without_waiting_for_timeout(model_server, phase):
     reply = (

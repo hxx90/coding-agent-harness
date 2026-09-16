@@ -49,3 +49,11 @@
 另补齐损坏的 turns/redo/active/extra_paths 检查、MCP env 类型检查和 session 文件大小上限；保留最后一份可用的持久化状态。Shell 与 MCP 的环境过滤使用同一实现。
 
 最终验收：全部 **184 项测试通过**（22.30 秒），类型检查覆盖 15 个源文件，24 个文件静态/格式检查通过。最终 wheel 独立安装与三次 HTTP 请求的实际编码/验证冒烟通过。
+
+## 2026-09-16 Provider 兼容修复
+
+本地首次接入真实网关时先出现 HTTP 405。诊断确认 CLI 会在 `base_url` 后拼接 `/chat/completions`，而本机配置误用了站点根地址；将 `AGENT_HARNESS_BASE_URL` 改为带 `/v1` 的 API 根路径后，模型列表端点恢复正常。
+
+随后 `gpt-5.6-sol` 明确拒绝 `max_tokens` 并要求 `max_completion_tokens`。为保留其他 OpenAI-compatible 服务的兼容性，Provider 没有全局替换字段或按模型前缀猜测，而是解析结构化 400 错误，只对明确的 `unsupported_parameter` 响应做一次参数切换；成功后在 Provider 实例中记住协商结果，避免每个 Agent 回合重复 400。测试覆盖首次请求、兼容重试和下一次 completion，并保留原有限重试语义。
+
+修复后真实模型最小任务成功完成；相关测试、Ruff、Mypy、全量 218 项测试和 Diff 检查均通过。
