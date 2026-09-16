@@ -40,6 +40,7 @@ from vibe.utils.io import read_safe
 if TYPE_CHECKING:
     from vibe.core.agents.manager import AgentManager
     from vibe.core.config import VibeConfigSchema
+    from vibe.core.hardware import HardwareRuntime
     from vibe.core.hooks.models import HookConfigResult
     from vibe.core.skills.manager import SkillManager
     from vibe.core.subagents import SubagentRunnerPort
@@ -94,6 +95,7 @@ class InvokeContext:
     session_id: str | None = field(default=None)
     mcp_pool: MCPConnectionPool | None = field(default=None)
     tool_io: ToolIOPort | None = field(default=None)
+    hardware_runtime: HardwareRuntime | None = field(default=None)
 
 
 class ToolError(Exception):

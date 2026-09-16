@@ -379,6 +379,29 @@ installed_agents = ["lean"]
 default_agent = "plan"
 ```
 
+### Robo Hardware Harness
+
+Robo exposes five built-in hardware tools: `robo_devices`, `robo_observe`,
+`robo_execute`, `robo_sequence`, and `robo_stop`. All motion goes through the
+session-owned `HardwareRuntime`; do not call a vendor motion tool directly.
+The built-in `sim-arm-1` device is deterministic and is intended for local
+contract testing, not physics or safety validation. Motion requires an active
+device lease followed by explicit arming. Arming requires approval even when
+the other `robo_devices` operations are allowed. `robo_stop` remains callable
+without a lease and only reports success when the Adapter returns an
+acknowledgement.
+
+`robo-capx-bridge` serves Robo at `/chat/completions` for CaP-X and
+`robo-capx-smoke` runs a small local multi-turn repair case. CaP-X request traces
+default to `.vibe/capx-runs/`; hardware traces live under the session's
+`hardware-runs/` directory. Full CaP-X simulation requires a Linux/NVIDIA host.
+
+Local stdio hardware adapters use an MCP server name beginning with `robo-` and
+must hide all eight raw `robo_devices`, `robo_connect`, `robo_arm`,
+`robo_disarm`, `robo_observe`, `robo_execute`, `robo_stop`, and `robo_disconnect`
+tools through that server's
+`disabled_tools` list. This prevents direct model access around Runtime safety.
+
 ### MCP Servers
 
 Remote MCP servers can be added non-interactively from the shell:

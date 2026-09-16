@@ -1,8 +1,22 @@
 # Robo 硬件 Harness 改造方案
 
-状态：待确认
+状态：本地 MVP 已实现；实体硬件与生产级安全能力待后续阶段
 
-本文记录对现有源码的扫描结果，以及将其改造成 Robo 硬件智能体 Harness 的推荐方案。当前阶段不修改 AgentLoop；应先确定硬件边界和安全约束，再进入实现。
+本文记录对现有源码的扫描结果，以及将其改造成 Robo 硬件智能体 Harness 的推荐方案。硬件边界和安全约束已经确定，首个可运行切片已经实现并通过本地测试。
+
+## 当前实现状态（2026-09-17）
+
+已实现：
+
+- `vibe/core/hardware` 的设备 Manifest、Adapter Port、租约、显式武装/解除武装、执行、观察、停止和 JSONL Trace；
+- Mac 可运行的确定性机械臂 Adapter；
+- 受 Runtime 仲裁的 `robo_devices`、`robo_observe`、`robo_execute`、`robo_sequence`、`robo_stop`；
+- stdio MCP 厂商 Adapter，且要求隐藏原始设备 Tool，防止模型绕过 Runtime；
+- CaP-X OpenAI-compatible Agent Bridge，支持文本、data URL 图片和多轮反馈；
+- 不执行任意 Python 的本地 CaP-X 风格“错误—观察—修复”烟雾测试。
+- 最多 200 条的模型可见 Trace，单个事件载荷上限 16 KiB；完整 JSONL 仍保存在模型上下文外。
+
+仍未完成：实体设备 Adapter、物理看门狗/急停、远程 HTTP 设备网关、完整 record/replay、专用硬件 UI，以及只能在 Linux/NVIDIA 上验收的官方 CaP-X 全量 Benchmark。运行方式和当前 Mac 探测结果见 [本地运行手册](robo-harness-local-runbook.md)。
 
 ## 一、核心决策
 

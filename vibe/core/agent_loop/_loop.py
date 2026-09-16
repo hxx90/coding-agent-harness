@@ -694,6 +694,15 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
             cwd=self.cwd,
             session_dir=session_dir,
         )
+        from vibe.core.hardware.factory import create_hardware_runtime
+
+        self.hardware_runtime = create_hardware_runtime(
+            self.config,
+            mcp_pool=self._mcp_pool,
+            cwd=self.cwd,
+            session_id=self.session_id,
+            session_dir=self.session_logger.session_dir,
+        )
         if self.session_logger.session_metadata is not None:
             self.session_logger.session_metadata.parent_session_id = parent_session_id
         self._hook_config_result = hook_config_result
@@ -784,6 +793,16 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
         """
         try:
             self._ensure_remote_registries()
+            if self._defer_heavy_init:
+                from vibe.core.hardware.factory import create_hardware_runtime
+
+                self.hardware_runtime = create_hardware_runtime(
+                    self.config,
+                    mcp_pool=self._mcp_pool,
+                    cwd=self.cwd,
+                    session_id=self.session_id,
+                    session_dir=self.session_logger.session_dir,
+                )
             self.tool_manager.integrate_all(raise_on_mcp_failure=True)
             self.messages.update_system_prompt(self._build_system_prompt())
         except Exception as exc:
@@ -1301,6 +1320,8 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
                 task.cancel()
                 with contextlib.suppress(BaseException):
                     await task
+        with contextlib.suppress(Exception):
+            await self.hardware_runtime.aclose()
         if self._mcp_pool is not None:
             with contextlib.suppress(Exception):
                 await self._mcp_pool.aclose()
@@ -2849,6 +2870,7 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
                 session_id=self.session_id,
                 mcp_pool=self._mcp_pool,
                 tool_io=self._turn.tool_io,
+                hardware_runtime=self.hardware_runtime,
             ),
             **tool_call.args_dict,
         ):

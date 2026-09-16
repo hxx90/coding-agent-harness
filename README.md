@@ -57,6 +57,7 @@ pip install mistral-vibe
   - [Interactive Mode](#interactive-mode)
   - [Trust Folder System](#trust-folder-system)
   - [Programmatic Mode](#programmatic-mode)
+  - [Hardware Harness and CaP-X](#hardware-harness-and-cap-x)
 - [Voice Mode](#voice-mode)
 - [Slash Commands](#slash-commands)
   - [Built-in Slash Commands](#built-in-slash-commands)
@@ -99,6 +100,7 @@ pip install mistral-vibe
   - Beautiful Themes.
 - **Highly Configurable**: Customize models, providers, tool permissions, and UI preferences through a simple `config.toml` file.
 - **Safety First**: Features tool execution approval.
+- **Hardware Harness**: Discovers simulated or MCP-backed devices and routes motion through leases, approval, observation, acknowledged stop, and per-run traces.
 - **Multiple Built-in Agents**: Choose from different agent profiles tailored for specific workflows.
 
 ### Built-in Agents
@@ -289,6 +291,24 @@ Example:
 ```bash
 vibe --prompt "Analyze the codebase" --max-turns 5 --max-price 1.0 --max-tokens 50000 --output json
 ```
+
+### Hardware Harness and CaP-X
+
+Robo includes a deterministic local arm (`sim-arm-1`) and the `robo_devices`,
+`robo_observe`, `robo_execute`, `robo_sequence`, and `robo_stop` tools. Start the
+CLI with `uv run robo -C .` and ask it to discover, connect, lease, explicitly
+arm, and operate the simulated arm.
+
+To expose Robo as a CaP-X coding agent:
+
+```bash
+uv run robo-capx-bridge -C . --host 127.0.0.1 --port 8110 --trust
+uv run robo-capx-smoke --url http://127.0.0.1:8110/chat/completions
+```
+
+See the [Chinese local runbook](docs/robo-harness-local-runbook.md) for MCP
+adapter configuration, trace locations, Mac limitations, and the Linux/NVIDIA
+CaP-X command.
 
 ## Voice Mode
 
