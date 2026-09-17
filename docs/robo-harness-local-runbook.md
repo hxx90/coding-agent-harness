@@ -29,7 +29,7 @@ Mac 本地可以完整验证协议、Agent 多轮修复和确定性设备行为�
 
 ```bash
 uv sync --all-extras
-uv run robo -C .
+uv run robo --workdir .
 ```
 
 可以从一个可验证的小任务开始：

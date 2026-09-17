@@ -296,7 +296,7 @@ vibe --prompt "Analyze the codebase" --max-turns 5 --max-price 1.0 --max-tokens 
 
 Robo includes a deterministic local arm (`sim-arm-1`) and the `robo_devices`,
 `robo_observe`, `robo_execute`, `robo_sequence`, and `robo_stop` tools. Start the
-CLI with `uv run robo -C .` and ask it to discover, connect, lease, explicitly
+CLI with `uv run robo --workdir .` and ask it to discover, connect, lease, explicitly
 arm, and operate the simulated arm.
 
 To expose Robo as a CaP-X coding agent:
