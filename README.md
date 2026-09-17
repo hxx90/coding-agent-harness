@@ -299,6 +299,11 @@ Robo includes a deterministic local arm (`sim-arm-1`) and the `robo_devices`,
 CLI with `uv run robo --workdir .` and ask it to discover, connect, lease, explicitly
 arm, and operate the simulated arm.
 
+For a visible Franka Panda simulation on macOS, install the optional simulator
+extra with `uv sync --extra simulator`, configure the bundled `robo-sim-mcp`
+adapter, and connect `mujoco-panda-1`. The local runbook contains the complete
+configuration and prompt.
+
 To expose Robo as a CaP-X coding agent:
 
 ```bash

@@ -110,9 +110,10 @@ class MCPStdioDeviceAdapter:
         )
 
     async def stop(self, device_id: str, reason: str) -> StopReceipt:
-        return await self._call_model(
-            self._tools.stop, {"device_id": device_id, "reason": reason}, StopReceipt
+        payload = await self._call_interrupt(
+            self._tools.stop, {"device_id": device_id, "reason": reason}
         )
+        return self._validate_model(self._tools.stop, payload, StopReceipt)
 
     async def disconnect(self, device_id: str) -> None:
         await self._call(self._tools.disconnect, {"device_id": device_id})
@@ -124,6 +125,12 @@ class MCPStdioDeviceAdapter:
         self, tool_name: str, arguments: dict[str, Any], model: type[ModelT]
     ) -> ModelT:
         payload = await self._call(tool_name, arguments)
+        return self._validate_model(tool_name, payload, model)
+
+    @staticmethod
+    def _validate_model[ModelT: BaseModel](
+        tool_name: str, payload: dict[str, Any], model: type[ModelT]
+    ) -> ModelT:
         try:
             return model.model_validate(payload)
         except ValidationError as exc:
@@ -144,6 +151,27 @@ class MCPStdioDeviceAdapter:
             )
         except Exception as exc:
             raise MCPAdapterError(f"MCP tool {tool_name} failed: {exc}") from exc
+        return self._result_payload(tool_name, result)
+
+    async def _call_interrupt(
+        self, tool_name: str, arguments: dict[str, Any]
+    ) -> dict[str, Any]:
+        try:
+            result = await self._pool.call_interrupt_tool(
+                command=self._command,
+                tool_name=tool_name,
+                arguments=arguments,
+                env=self._env,
+                cwd=self._cwd,
+                startup_timeout_sec=self._startup_timeout_sec,
+                tool_timeout_sec=self._tool_timeout_sec,
+            )
+        except Exception as exc:
+            raise MCPAdapterError(f"MCP tool {tool_name} failed: {exc}") from exc
+        return self._result_payload(tool_name, result)
+
+    @staticmethod
+    def _result_payload(tool_name: str, result: Any) -> dict[str, Any]:
         if result.structured is not None:
             return result.structured
         if result.text is None:

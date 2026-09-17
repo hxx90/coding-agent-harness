@@ -454,6 +454,16 @@ HTTP MCP servers can use either static auth or OAuth:
 - For SSH/remote browser callbacks, forward the loopback port:
   `ssh -L 47823:127.0.0.1:47823 <host>`.
 
+### Robo MuJoCo simulator
+
+The optional visual simulator exposes a Franka Panda as a local hardware MCP
+adapter. Install it with `uv sync --extra simulator`, then configure the bundled
+`robo-sim-mcp` stdio server with a name beginning with `robo-`. All eight raw
+`robo_*` MCP tools must be listed in `disabled_tools`; the HardwareRuntime calls
+them internally so the model cannot bypass leases, arming, approvals, traces, or
+stop acknowledgement. Connecting `mujoco-panda-1` opens the MuJoCo viewer. On
+macOS, the entry point automatically restarts under `mjpython`.
+
 ### Connectors
 
 Mistral connectors are auto-discovered when the active provider is Mistral

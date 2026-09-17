@@ -51,6 +51,53 @@ uv run robo --workdir .
 
 硬件 Trace 默认保存在当前会话目录的 `hardware-runs/<run_id>.jsonl`。关闭会话日志时，保存在项目的 `.vibe/hardware-runs/<session_id>/`。模型通过 `robo_observe` 最多只会看到最新 200 条事件，原始 JSONL 不会全部灌入上下文。
 
+### 启用有画面的 MuJoCo Panda
+
+安装可选的 Robosuite 仿真依赖：
+
+```bash
+uv sync --extra simulator
+```
+
+在项目 `.vibe/config.toml` 中加入：
+
+```toml
+[[mcp_servers]]
+name = "robo-mujoco"
+transport = "stdio"
+command = "uv"
+args = ["run", "--extra", "simulator", "robo-sim-mcp"]
+sampling_enabled = false
+startup_timeout_sec = 60.0
+tool_timeout_sec = 120.0
+disabled_tools = [
+  "robo_devices",
+  "robo_connect",
+  "robo_arm",
+  "robo_disarm",
+  "robo_observe",
+  "robo_execute",
+  "robo_stop",
+  "robo_disconnect",
+]
+```
+
+重启 Robo 后，让它连接 `mujoco-panda-1`。首次连接会打开 MuJoCo 窗口；
+`move_cartesian`、`gripper_open` 和 `gripper_close` 会实时驱动画面。在 macOS
+上 `robo-sim-mcp` 会自动使用 MuJoCo 提供的 `mjpython` 启动器。
+
+```text
+连接 mujoco-panda-1，获取租约并武装。先回到 home，
+再沿 X 正方向移动 0.2、持续 20 步，闭合夹爪，观察状态，最后停止。
+```
+
+如果只想做无窗口的协议测试，在 MCP Server 配置中增加：
+
+```toml
+[mcp_servers.env]
+ROBO_SIM_HEADLESS = "1"
+```
+
 ## 二、运行本地自动化测试
 
 运行 Robo 硬件 Runtime、MCP Adapter、工具和 CaP-X Bridge 的聚焦测试：

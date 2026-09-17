@@ -18,11 +18,13 @@ class FakeMCPResult:
 class FakeMCPPool:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.interrupts: list[tuple[str, bool]] = []
 
     async def call_tool(self, **kwargs: Any) -> FakeMCPResult:
         tool_name = kwargs["tool_name"]
         arguments = kwargs["arguments"]
         self.calls.append((tool_name, arguments))
+        self.interrupts.append((tool_name, False))
         responses = {
             "robo_devices": {
                 "devices": [
@@ -87,6 +89,11 @@ class FakeMCPPool:
         }
         return FakeMCPResult(structured=responses[tool_name])
 
+    async def call_interrupt_tool(self, **kwargs: Any) -> FakeMCPResult:
+        result = await self.call_tool(**kwargs)
+        self.interrupts[-1] = (kwargs["tool_name"], True)
+        return result
+
 
 @pytest.mark.asyncio
 async def test_mcp_adapter_translates_vendor_tools_into_hardware_contract() -> None:
@@ -138,3 +145,7 @@ async def test_mcp_adapter_translates_vendor_tools_into_hardware_contract() -> N
         ("robo_disarm", {"device_id": "vendor-arm-9"}),
         ("robo_disconnect", {"device_id": "vendor-arm-9"}),
     ]
+    assert ("robo_stop", True) in pool.interrupts
+    assert all(
+        interrupt is False for name, interrupt in pool.interrupts if name != "robo_stop"
+    )

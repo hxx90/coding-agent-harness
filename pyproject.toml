@@ -129,6 +129,12 @@ dependencies = [
     "zstandard==0.25.0",
 ]
 
+[project.optional-dependencies]
+simulator = [
+    "mujoco==3.3.7",
+    "robosuite==1.5.2",
+]
+
 [project.urls]
 Homepage = "https://github.com/mistralai/mistral-vibe"
 Repository = "https://github.com/mistralai/mistral-vibe"
@@ -156,6 +162,7 @@ robo-acp = "vibe.acp.entrypoint:main"
 robo-app-server = "vibe.app_server.stdio:main"
 robo-capx-bridge = "vibe.capx.entrypoint:main"
 robo-capx-smoke = "vibe.capx.local_bench:main"
+robo-sim-mcp = "vibe.hardware_sim.entrypoint:main"
 vibe = "vibe.cli.entrypoint:main"
 vibe-acp = "vibe.acp.entrypoint:main"
 vibe-app-server = "vibe.app_server.stdio:main"

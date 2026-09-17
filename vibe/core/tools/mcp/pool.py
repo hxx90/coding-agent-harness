@@ -59,13 +59,13 @@ class _StdioConnection:
     """A single long-lived stdio MCP session owned by one dedicated task.
 
     The MCP ``stdio_client`` and ``ClientSession`` context managers open anyio
-    task groups bound to the task that enters them, so the session must be
-    entered, used, and exited all within the same task. A single worker task
-    owns the session for its whole lifetime and services calls from a queue;
-    callers submit a request and await its future. Because the worker handles
-    one request at a time, calls to the same server are serialized (stateful
-    servers never see interleaved requests). On transport death the worker drops
-    the session and respawns it once before retrying the call.
+    task groups bound to the task that enters them, so the same worker task owns
+    their enter/exit lifecycle. Normal calls to the same server are serialized so
+    stateful servers do not see accidental interleaving. A safety-critical
+    interrupt is tracked separately and may use the initialized session
+    concurrently, allowing a stop request to reach a device server during a long
+    motion. On transport death the worker settles interrupts, drops the session,
+    and respawns it once before retrying the queued call.
     """
 
     def __init__(
@@ -82,6 +82,7 @@ class _StdioConnection:
         self._session: ClientSession | None = None
         self._stack: contextlib.AsyncExitStack | None = None
         self._inflight: _Request | None = None
+        self._interrupts: set[asyncio.Task[Any]] = set()
 
     def _ensure_worker(self) -> None:
         if self._worker is None or self._worker.done():
@@ -94,6 +95,22 @@ class _StdioConnection:
         future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
         await self._requests.put(_Request(tool_name, arguments, call_timeout, future))
         return await future
+
+    async def call_interrupt_tool(
+        self, tool_name: str, arguments: dict[str, Any], call_timeout: timedelta | None
+    ) -> Any:
+        self._ensure_worker()
+        session = self._session
+        if session is None:
+            return await self.call_tool(tool_name, arguments, call_timeout)
+        task = asyncio.create_task(
+            session.call_tool(tool_name, arguments, read_timeout_seconds=call_timeout)
+        )
+        self._interrupts.add(task)
+        try:
+            return await task
+        finally:
+            self._interrupts.discard(task)
 
     async def _run(self) -> None:
         try:
@@ -113,6 +130,7 @@ class _StdioConnection:
                         req.future.set_result(result)
                     self._inflight = None
         finally:
+            await self._cancel_interrupts()
             await self._close_session()
             self._fail_pending()
 
@@ -124,6 +142,7 @@ class _StdioConnection:
             )
         except _TRANSPORT_ERRORS as exc:
             logger.debug("MCP stdio transport died, reconnecting once: %r", exc)
+            await self._cancel_interrupts()
             await self._close_session()
             session = await self._ensure_session()
             return await session.call_tool(
@@ -169,6 +188,7 @@ class _StdioConnection:
                 req.future.set_exception(err)
 
     async def aclose(self) -> None:
+        await self._cancel_interrupts()
         worker = self._worker
         self._worker = None
         if worker is None or worker.done():
@@ -182,6 +202,15 @@ class _StdioConnection:
                 worker.cancel()
                 with contextlib.suppress(BaseException):
                     await worker
+
+    async def _cancel_interrupts(self) -> None:
+        tasks = list(self._interrupts)
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._interrupts.difference_update(tasks)
 
 
 class MCPConnectionPool:
@@ -253,6 +282,27 @@ class MCPConnectionPool:
         )
         call_timeout = timedelta(seconds=tool_timeout_sec) if tool_timeout_sec else None
         result = await conn.call_tool(tool_name, arguments, call_timeout)
+        return parse_call_result("stdio:" + " ".join(command), tool_name, result)
+
+    async def call_interrupt_tool(
+        self,
+        *,
+        command: list[str],
+        tool_name: str,
+        arguments: dict[str, Any],
+        env: dict[str, str] | None = None,
+        cwd: str | None = None,
+        startup_timeout_sec: float | None = None,
+        tool_timeout_sec: float | None = None,
+        sampling_callback: MCPSamplingHandler | None = None,
+    ) -> MCPToolResult:
+        self._bind_loop()
+        key = stdio_key(command, env, cwd)
+        conn = await self._get_or_create(
+            key, command, env, cwd, startup_timeout_sec, sampling_callback
+        )
+        call_timeout = timedelta(seconds=tool_timeout_sec) if tool_timeout_sec else None
+        result = await conn.call_interrupt_tool(tool_name, arguments, call_timeout)
         return parse_call_result("stdio:" + " ".join(command), tool_name, result)
 
     async def aclose(self) -> None:
