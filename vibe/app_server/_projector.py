@@ -23,6 +23,7 @@ from vibe.app_server.models import (
     EffectState,
     FailedEffectState,
     GenericEffectDetail,
+    HardwareVerificationRequiredNoticeDetail,
     HookNoticeDetail,
     HookScope,
     HookSeverity,
@@ -67,6 +68,7 @@ from vibe.core.types import (
     CompactEndEvent,
     CompactStartEvent,
     ContextClearedEvent,
+    HardwareVerificationRequiredEvent,
     PlanReviewEndedEvent,
     PlanReviewRequestedEvent,
     ReasoningEvent,
@@ -140,6 +142,7 @@ class EventProjector:
                 ]
             case (
                 WaitingForInputEvent()
+                | HardwareVerificationRequiredEvent()
                 | AgentProfileChangedEvent()
                 | ContextClearedEvent()
                 | PlanReviewRequestedEvent()
@@ -766,6 +769,7 @@ def _effect_output_text(entry: PublicEffectEntry) -> str:
 
 type NoticeEvent = (
     WaitingForInputEvent
+    | HardwareVerificationRequiredEvent
     | AgentProfileChangedEvent
     | ContextClearedEvent
     | SessionTitleUpdatedEvent
@@ -782,6 +786,11 @@ def _notice_data(event: NoticeEvent) -> tuple[str, NoticeDetail]:
                 task_id=event.task_id,
                 label=event.label,
                 predefined_answers=event.predefined_answers,
+            )
+        case HardwareVerificationRequiredEvent():
+            message = "Physical action requires postcondition verification"
+            detail = HardwareVerificationRequiredNoticeDetail(
+                device_count=event.device_count
             )
         case AgentProfileChangedEvent():
             message = f"Agent changed to {event.agent_name}"

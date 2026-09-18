@@ -1000,6 +1000,11 @@ class WaitingForInputNoticeDetail(ProtocolModel):
     predefined_answers: list[str] | None = None
 
 
+class HardwareVerificationRequiredNoticeDetail(ProtocolModel):
+    kind: Literal["hardware_verification_required"] = "hardware_verification_required"
+    device_count: int = Field(ge=1)
+
+
 class ScheduledLoopFiredNoticeDetail(ProtocolModel):
     kind: Literal["scheduled_loop_fired"] = "scheduled_loop_fired"
     loop_id: str
@@ -1013,6 +1018,7 @@ NoticeDetail = Annotated[
     | PlanReviewStartedNoticeDetail
     | PlanReviewEndedNoticeDetail
     | WaitingForInputNoticeDetail
+    | HardwareVerificationRequiredNoticeDetail
     | ScheduledLoopFiredNoticeDetail,
     Field(discriminator="kind"),
 ]

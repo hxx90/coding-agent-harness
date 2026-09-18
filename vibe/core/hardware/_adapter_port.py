@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from pydantic import JsonValue
+
 from vibe.core.hardware.models import (
     CommandReceipt,
     DeviceCapabilityManifest,
     DeviceSnapshot,
     HardwareCommand,
     StopReceipt,
+    VerificationReport,
 )
 
 
@@ -24,6 +27,10 @@ class DeviceAdapter(Protocol):
     async def disarm(self, device_id: str) -> DeviceSnapshot: ...
 
     async def observe(self, device_id: str) -> DeviceSnapshot: ...
+
+    async def verify(
+        self, device_id: str, criterion: str, parameters: dict[str, JsonValue]
+    ) -> VerificationReport: ...
 
     async def execute(self, command: HardwareCommand) -> CommandReceipt: ...
 

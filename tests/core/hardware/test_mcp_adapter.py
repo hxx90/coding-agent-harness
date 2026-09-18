@@ -40,6 +40,9 @@ class FakeMCPPool:
                                 "destructive": True,
                             }
                         ],
+                        "verifications": [
+                            {"name": "at_home", "description": "Verify the arm is home"}
+                        ],
                     }
                 ]
             },
@@ -79,6 +82,23 @@ class FakeMCPPool:
                 "observed_at": "2026-09-17T00:00:02Z",
                 "state": {"mode": "idle"},
             },
+            "robo_verify": {
+                "verification_id": "verification-9",
+                "device_id": "vendor-arm-9",
+                "criterion": "at_home",
+                "status": "passed",
+                "observed_at": "2026-09-17T00:00:02Z",
+                "snapshot_sequence": 2,
+                "checks": [
+                    {
+                        "name": "joint_pose_matches",
+                        "status": "passed",
+                        "observed": True,
+                        "expected": "home pose",
+                    }
+                ],
+                "summary": "Arm is home.",
+            },
             "robo_stop": {
                 "device_id": "vendor-arm-9",
                 "acknowledged": True,
@@ -114,6 +134,7 @@ async def test_mcp_adapter_translates_vendor_tools_into_hardware_contract() -> N
         )
     )
     snapshot = await adapter.observe("vendor-arm-9")
+    verification = await adapter.verify("vendor-arm-9", "at_home", {})
     stopped = await adapter.stop("vendor-arm-9", "operator request")
     disarmed = await adapter.disarm("vendor-arm-9")
     await adapter.disconnect("vendor-arm-9")
@@ -124,6 +145,7 @@ async def test_mcp_adapter_translates_vendor_tools_into_hardware_contract() -> N
     assert armed.status == "armed"
     assert receipt.result == {"pose": "home"}
     assert snapshot.sequence == 2
+    assert verification.status == "passed"
     assert stopped.acknowledged is True
     assert disarmed.status == "connected"
     assert pool.calls == [
@@ -141,6 +163,10 @@ async def test_mcp_adapter_translates_vendor_tools_into_hardware_contract() -> N
             },
         ),
         ("robo_observe", {"device_id": "vendor-arm-9"}),
+        (
+            "robo_verify",
+            {"device_id": "vendor-arm-9", "criterion": "at_home", "parameters": {}},
+        ),
         ("robo_stop", {"device_id": "vendor-arm-9", "reason": "operator request"}),
         ("robo_disarm", {"device_id": "vendor-arm-9"}),
         ("robo_disconnect", {"device_id": "vendor-arm-9"}),

@@ -295,7 +295,8 @@ vibe --prompt "Analyze the codebase" --max-turns 5 --max-price 1.0 --max-tokens 
 ### Hardware Harness and CaP-X
 
 Robo includes a deterministic local arm (`sim-arm-1`) and the `robo_devices`,
-`robo_observe`, `robo_execute`, `robo_sequence`, and `robo_stop` tools. Start the
+`robo_observe`, `robo_execute`, `robo_sequence`, `robo_verify`, and `robo_stop`
+tools. Start the
 CLI with `uv run robo --workdir .` and ask it to discover, connect, lease, explicitly
 arm, and operate the simulated arm.
 

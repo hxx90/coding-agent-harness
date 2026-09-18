@@ -23,19 +23,21 @@ def create_hardware_runtime(
     session_id: str,
     session_dir: Path | None,
 ) -> HardwareRuntime:
-    adapters: list[DeviceAdapter] = [DeterministicSimulatorAdapter()]
-    if mcp_pool is not None:
-        adapters.extend(_mcp_adapters(config, mcp_pool))
     trace_root = (
         session_dir / "hardware-runs"
         if session_dir is not None
         else cwd / ".vibe" / "hardware-runs" / session_id
     )
+    adapters: list[DeviceAdapter] = [DeterministicSimulatorAdapter()]
+    if mcp_pool is not None:
+        adapters.extend(
+            _mcp_adapters(config, mcp_pool, evidence_dir=trace_root / "evidence")
+        )
     return HardwareRuntime(adapters=adapters, trace_dir=trace_root)
 
 
 def _mcp_adapters(
-    config: VibeConfigSchema, pool: MCPConnectionPool
+    config: VibeConfigSchema, pool: MCPConnectionPool, *, evidence_dir: Path
 ) -> list[DeviceAdapter]:
     names = MCPDeviceToolNames()
     required_hidden_tools = {
@@ -44,6 +46,7 @@ def _mcp_adapters(
         names.arm,
         names.disarm,
         names.observe,
+        names.verify,
         names.execute,
         names.stop,
         names.disconnect,
@@ -67,7 +70,10 @@ def _mcp_adapters(
                 adapter_id=server.name,
                 command=server.argv(),
                 pool=pool,
-                env=server.env,
+                env={
+                    **server.env,
+                    "ROBO_EVIDENCE_DIR": str(evidence_dir / server.name),
+                },
                 cwd=server.cwd,
                 startup_timeout_sec=server.startup_timeout_sec,
                 tool_timeout_sec=server.tool_timeout_sec,

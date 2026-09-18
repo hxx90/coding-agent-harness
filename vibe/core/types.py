@@ -574,6 +574,10 @@ class WaitingForInputEvent(BaseEvent):
     predefined_answers: list[str] | None = None
 
 
+class HardwareVerificationRequiredEvent(BaseEvent):
+    device_count: int = Field(ge=1)
+
+
 class RequestEvent(BaseEvent):
     request_id: str
 

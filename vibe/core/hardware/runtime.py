@@ -4,15 +4,18 @@ import asyncio
 from collections import deque
 from collections.abc import Awaitable
 import contextlib
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 import re
+from urllib.parse import urlparse
 
 import anyio
 from pydantic import JsonValue
 
 from vibe.core.hardware._adapter_port import DeviceAdapter
 from vibe.core.hardware.models import (
+    MAX_OBSERVATION_EVIDENCE,
     MAX_TRACE_EVENTS,
     CommandReceipt,
     CommandStatus,
@@ -21,20 +24,40 @@ from vibe.core.hardware.models import (
     DeviceSnapshot,
     DeviceStatus,
     HardwareCommand,
+    ObservationEvidence,
     RunEvent,
     RunTrace,
     StopReceipt,
+    VerificationReport,
+    VerificationStatus,
 )
 from vibe.core.hardware.simulator import DeterministicSimulatorAdapter
 from vibe.observability.logging import logger
+from vibe.utils.paths import file_uri_to_path
 
 _RUN_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+_MAX_EVIDENCE_TOTAL_BYTES = 10 * 1024 * 1024
+_MAX_VERIFICATION_REPORT_BYTES = 64 * 1024
+_SUPPORTED_IMAGE_TYPES = frozenset({"image/png", "image/jpeg", "image/webp"})
 
 
 class HardwareRuntimeError(RuntimeError):
     def __init__(self, message: str, *, code: str) -> None:
         self.code = code
         super().__init__(message)
+
+
+@dataclass(frozen=True, slots=True)
+class _VerificationRequirement:
+    completed_at: datetime
+    minimum_snapshot_sequence: int
+    parameters: dict[str, JsonValue]
+
+
+@dataclass(frozen=True, slots=True)
+class _PendingVerification:
+    revision: int
+    requirements: dict[str, _VerificationRequirement]
 
 
 class HardwareRuntime:
@@ -59,6 +82,9 @@ class HardwareRuntime:
         self._trace_sequences: dict[str, int] = {}
         self._trace_event_limit = trace_event_limit
         self._busy: set[str] = set()
+        self._snapshot_sequences: dict[str, int] = {}
+        self._verification_revision = 0
+        self._pending_verifications: dict[str, _PendingVerification] = {}
         self._arming: dict[str, asyncio.Task[DeviceSnapshot]] = {}
         self._inflight: dict[str, asyncio.Task[CommandReceipt]] = {}
         self._lock = asyncio.Lock()
@@ -102,6 +128,7 @@ class HardwareRuntime:
         async with self._lock:
             self._connected.add(device_id)
             self._armed.discard(device_id)
+            self._snapshot_sequences[device_id] = snapshot.sequence
         await self._record(run_id, "device_connected", device_id=device_id)
         return snapshot
 
@@ -164,6 +191,7 @@ class HardwareRuntime:
             self._busy.discard(device_id)
             if confirmed and reservation_active:
                 self._armed.add(device_id)
+                self._snapshot_sequences[device_id] = snapshot.sequence
         if not confirmed:
             await self.stop(
                 device_id, reason="adapter did not confirm arming", run_id=run_id
@@ -197,6 +225,7 @@ class HardwareRuntime:
         )
         async with self._lock:
             self._armed.discard(device_id)
+            self._snapshot_sequences[device_id] = snapshot.sequence
         await self._record(run_id, "device_disarmed", device_id=device_id)
         return snapshot
 
@@ -266,7 +295,7 @@ class HardwareRuntime:
     async def execute(self, command: HardwareCommand, *, run_id: str) -> CommandReceipt:
         self._validate_run_id(run_id)
         adapter = await self._adapter_for(command.device_id)
-        rejection = await self._reserve_command(command)
+        rejection, snapshot_sequence = await self._reserve_command(command)
         if rejection is not None:
             await self._record(
                 run_id,
@@ -372,6 +401,10 @@ class HardwareRuntime:
             CommandStatus.FAILED: "command_failed",
             CommandStatus.UNKNOWN: "command_unknown",
         }[receipt.status]
+        if receipt.status is CommandStatus.COMPLETED:
+            await self._mark_verification_required(
+                command, receipt, minimum_snapshot_sequence=snapshot_sequence + 1
+            )
         await self._record(
             run_id,
             event_kind,
@@ -380,6 +413,39 @@ class HardwareRuntime:
             payload={"status": receipt.status.value},
         )
         return receipt
+
+    async def _mark_verification_required(
+        self,
+        command: HardwareCommand,
+        receipt: CommandReceipt,
+        *,
+        minimum_snapshot_sequence: int,
+    ) -> None:
+        async with self._lock:
+            manifest = self._manifests[command.device_id]
+            verifications = [
+                verification
+                for verification in manifest.verifications
+                if command.action in verification.applicable_actions
+            ]
+            if not verifications:
+                return
+            current = self._pending_verifications.get(command.device_id)
+            requirements = dict(current.requirements) if current is not None else {}
+            for verification in verifications:
+                expected_parameters = {
+                    target: command.parameters.get(source)
+                    for target, source in verification.parameter_bindings.items()
+                }
+                requirements[verification.name] = _VerificationRequirement(
+                    completed_at=receipt.completed_at,
+                    minimum_snapshot_sequence=minimum_snapshot_sequence,
+                    parameters=expected_parameters,
+                )
+            self._verification_revision += 1
+            self._pending_verifications[command.device_id] = _PendingVerification(
+                revision=self._verification_revision, requirements=requirements
+            )
 
     async def execute_sequence(
         self, commands: list[HardwareCommand], *, run_id: str
@@ -413,6 +479,8 @@ class HardwareRuntime:
         self._require_device_id(
             expected=device_id, actual=snapshot.device_id, operation="observe"
         )
+        self._validate_evidence(snapshot.evidence)
+        await self._record_snapshot_sequence(device_id, snapshot.sequence)
         await self._record(
             run_id,
             "device_observed",
@@ -420,6 +488,162 @@ class HardwareRuntime:
             payload={"status": snapshot.status.value, "sequence": snapshot.sequence},
         )
         return snapshot
+
+    async def verify(
+        self,
+        device_id: str,
+        *,
+        criterion: str,
+        run_id: str,
+        parameters: dict[str, JsonValue] | None = None,
+    ) -> VerificationReport:
+        self._validate_run_id(run_id)
+        adapter = await self._adapter_for(device_id)
+        async with self._lock:
+            if device_id not in self._connected:
+                raise HardwareRuntimeError(
+                    f"Device {device_id} is not connected", code="not_connected"
+                )
+            if device_id in self._busy:
+                raise HardwareRuntimeError(
+                    f"Device {device_id} is still executing; observe it after it stops",
+                    code="device_busy",
+                )
+            manifest = self._manifests[device_id]
+            supported = {item.name for item in manifest.verifications}
+            pending = self._pending_verifications.get(device_id)
+            pending_revision = pending.revision if pending is not None else None
+        if criterion not in supported:
+            raise HardwareRuntimeError(
+                f"Unsupported verification criterion: {criterion}",
+                code="unsupported_verification",
+            )
+        report = await self._call_adapter(
+            "verify", adapter.verify(device_id, criterion, parameters or {})
+        )
+        self._require_device_id(
+            expected=device_id, actual=report.device_id, operation="verify"
+        )
+        if report.criterion != criterion:
+            raise HardwareRuntimeError(
+                "Hardware adapter verify returned a mismatched criterion",
+                code="adapter_contract",
+            )
+        if len(report.model_dump_json().encode()) > _MAX_VERIFICATION_REPORT_BYTES:
+            raise HardwareRuntimeError(
+                "Hardware adapter returned an oversized verification report",
+                code="adapter_contract",
+            )
+        self._validate_evidence(report.evidence)
+        returned_evidence_ids = {item.evidence_id for item in report.evidence}
+        if len(returned_evidence_ids) != len(report.evidence):
+            raise HardwareRuntimeError(
+                "Hardware adapter returned duplicate evidence IDs",
+                code="adapter_contract",
+            )
+        referenced_evidence_ids = {
+            evidence_id for check in report.checks for evidence_id in check.evidence_ids
+        }
+        referenced_evidence_ids.update(report.evidence_ids)
+        if not referenced_evidence_ids.issubset(returned_evidence_ids):
+            raise HardwareRuntimeError(
+                "Hardware adapter verification referenced missing evidence",
+                code="adapter_contract",
+            )
+        expected_status = VerificationStatus.PASSED
+        if any(check.status is VerificationStatus.FAILED for check in report.checks):
+            expected_status = VerificationStatus.FAILED
+        elif any(
+            check.status is VerificationStatus.INCONCLUSIVE for check in report.checks
+        ):
+            expected_status = VerificationStatus.INCONCLUSIVE
+        if report.status is not expected_status:
+            raise HardwareRuntimeError(
+                "Hardware adapter verification returned an inconsistent status",
+                code="adapter_contract",
+            )
+        await self._record_snapshot_sequence(device_id, report.snapshot_sequence)
+        await self._clear_matching_verification_requirement(
+            device_id=device_id,
+            criterion=criterion,
+            parameters=parameters or {},
+            report=report,
+            pending_revision=pending_revision,
+        )
+        await self._record(
+            run_id,
+            "task_verification_completed",
+            device_id=device_id,
+            payload={
+                "criterion": criterion,
+                "status": report.status.value,
+                "verification_id": report.verification_id,
+            },
+        )
+        return report
+
+    async def pending_verification_revisions(self) -> dict[str, int]:
+        """Return task-changing actions that still require a verify call."""
+        async with self._lock:
+            return {
+                device_id: pending.revision
+                for device_id, pending in self._pending_verifications.items()
+            }
+
+    async def _clear_matching_verification_requirement(
+        self,
+        *,
+        device_id: str,
+        criterion: str,
+        parameters: dict[str, JsonValue],
+        report: VerificationReport,
+        pending_revision: int | None,
+    ) -> None:
+        async with self._lock:
+            pending = self._pending_verifications.get(device_id)
+            if pending is None or pending.revision != pending_revision:
+                return
+            requirement = pending.requirements.get(criterion)
+            if requirement is None or parameters != requirement.parameters:
+                return
+            try:
+                stale = report.observed_at < requirement.completed_at or any(
+                    evidence.captured_at < requirement.completed_at
+                    for evidence in report.evidence
+                )
+            except TypeError as exc:
+                raise HardwareRuntimeError(
+                    "Hardware adapter verification returned invalid timestamps",
+                    code="adapter_contract",
+                ) from exc
+            if stale:
+                raise HardwareRuntimeError(
+                    "Hardware adapter verification predates the completed action",
+                    code="adapter_contract",
+                )
+            if report.snapshot_sequence < requirement.minimum_snapshot_sequence:
+                raise HardwareRuntimeError(
+                    "Hardware adapter verification used a stale snapshot sequence",
+                    code="adapter_contract",
+                )
+            remaining = dict(pending.requirements)
+            remaining.pop(criterion)
+            if remaining:
+                self._pending_verifications[device_id] = _PendingVerification(
+                    revision=pending.revision, requirements=remaining
+                )
+            else:
+                self._pending_verifications.pop(device_id, None)
+
+    async def _record_snapshot_sequence(self, device_id: str, sequence: int) -> None:
+        async with self._lock:
+            previous = self._snapshot_sequences.get(device_id)
+            if previous is not None and sequence < previous:
+                raise HardwareRuntimeError(
+                    "Hardware adapter returned a regressing snapshot sequence",
+                    code="adapter_contract",
+                )
+            self._snapshot_sequences[device_id] = sequence
 
     async def stop(self, device_id: str, *, reason: str, run_id: str) -> StopReceipt:
         self._validate_run_id(run_id)
@@ -508,27 +732,30 @@ class HardwareRuntime:
             return adapter
         raise HardwareRuntimeError(f"Unknown device: {device_id}", code="not_found")
 
-    async def _reserve_command(self, command: HardwareCommand) -> str | None:
+    async def _reserve_command(
+        self, command: HardwareCommand
+    ) -> tuple[str | None, int]:
         now = datetime.now(UTC)
         async with self._lock:
             if command.device_id not in self._connected:
-                return "not_connected"
+                return "not_connected", -1
             lease = self._leases.get(command.device_id)
             if (
                 lease is None
                 or lease.lease_id != command.lease_id
                 or lease.expires_at <= now
             ):
-                return "lease_required"
+                return "lease_required", -1
             if command.device_id not in self._armed:
-                return "not_armed"
+                return "not_armed", -1
             manifest = self._manifests[command.device_id]
             if command.action not in {action.name for action in manifest.actions}:
-                return "unsupported_action"
+                return "unsupported_action", -1
             if command.device_id in self._busy:
-                return "device_busy"
+                return "device_busy", -1
             self._busy.add(command.device_id)
-        return None
+            snapshot_sequence = self._snapshot_sequences.get(command.device_id, -1)
+        return None, snapshot_sequence
 
     async def _reserve_arm(self, device_id: str, *, lease_id: str) -> None:
         async with self._lock:
@@ -628,6 +855,45 @@ class HardwareRuntime:
                 f"Hardware adapter {operation} returned a mismatched device ID",
                 code="adapter_contract",
             )
+
+    def _validate_evidence(self, evidence_items: list[ObservationEvidence]) -> None:
+        if not evidence_items:
+            return
+        if len(evidence_items) > MAX_OBSERVATION_EVIDENCE:
+            raise HardwareRuntimeError(
+                "Hardware adapter returned too many observation evidence items",
+                code="adapter_contract",
+            )
+        if self._trace_dir is None:
+            raise HardwareRuntimeError(
+                "Hardware adapter returned evidence without a trusted evidence directory",
+                code="adapter_contract",
+            )
+        evidence_root = (self._trace_dir / "evidence").resolve()
+        total_bytes = 0
+        for evidence in evidence_items:
+            parsed = urlparse(evidence.uri)
+            if parsed.scheme != "file" or parsed.netloc not in {"", "localhost"}:
+                raise HardwareRuntimeError(
+                    "Hardware adapter returned untrusted observation evidence",
+                    code="adapter_contract",
+                )
+            path = Path(file_uri_to_path(evidence.uri)).resolve()
+            if (
+                not path.is_relative_to(evidence_root)
+                or evidence.mime_type not in _SUPPORTED_IMAGE_TYPES
+                or not path.is_file()
+            ):
+                raise HardwareRuntimeError(
+                    "Hardware adapter returned untrusted observation evidence",
+                    code="adapter_contract",
+                )
+            total_bytes += path.stat().st_size
+            if total_bytes > _MAX_EVIDENCE_TOTAL_BYTES:
+                raise HardwareRuntimeError(
+                    "Hardware adapter returned too much observation evidence",
+                    code="adapter_contract",
+                )
 
     @staticmethod
     def _validate_run_id(run_id: str) -> None:

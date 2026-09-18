@@ -15,6 +15,10 @@ from vibe.core.hardware.models import (
     DeviceTransport,
     HardwareCommand,
     StopReceipt,
+    VerificationCapability,
+    VerificationCheck,
+    VerificationReport,
+    VerificationStatus,
 )
 
 _ARM_DOF = 6
@@ -86,6 +90,22 @@ class DeterministicSimulatorAdapter:
                         parameters_schema={"cloth": {"type": "string"}},
                     ),
                 ],
+                verifications=[
+                    VerificationCapability(
+                        name="holding_object",
+                        description="Verify that the named object is held",
+                        parameters_schema={"object": {"type": "string"}},
+                        applicable_actions=["pick"],
+                        parameter_bindings={"object": "object"},
+                    ),
+                    VerificationCapability(
+                        name="cloth_folded",
+                        description="Verify that the named cloth is folded",
+                        parameters_schema={"cloth": {"type": "string"}},
+                        applicable_actions=["fold_cloth"],
+                        parameter_bindings={"cloth": "cloth"},
+                    ),
+                ],
                 metadata={
                     "control_mode": "deterministic_semantic_actions",
                     "is_physical": False,
@@ -118,6 +138,56 @@ class DeterministicSimulatorAdapter:
     async def observe(self, device_id: str) -> DeviceSnapshot:
         self._validate_connected(device_id)
         return self._snapshot()
+
+    async def verify(
+        self, device_id: str, criterion: str, parameters: dict[str, JsonValue]
+    ) -> VerificationReport:
+        self._validate_connected(device_id)
+        match criterion:
+            case "holding_object":
+                expected = parameters.get("object")
+                if not isinstance(expected, str) or not expected:
+                    raise SimulatorAdapterError(
+                        "holding_object verification requires a named object"
+                    )
+                observed = self._state["held_object"]
+                passed = observed == expected
+                check_name = "held_object_matches"
+            case "cloth_folded":
+                expected = parameters.get("cloth")
+                if not isinstance(expected, str) or not expected:
+                    raise SimulatorAdapterError(
+                        "cloth_folded verification requires a named cloth"
+                    )
+                folded = self._state["folded_cloths"]
+                passed = isinstance(folded, list) and expected in folded
+                observed = passed
+                check_name = "cloth_in_folded_set"
+            case _:
+                raise SimulatorAdapterError(
+                    f"Unsupported simulator verification criterion: {criterion}"
+                )
+        status = VerificationStatus.PASSED if passed else VerificationStatus.FAILED
+        return VerificationReport(
+            device_id=device_id,
+            criterion=criterion,
+            status=status,
+            observed_at=datetime.now(UTC),
+            snapshot_sequence=self._sequence,
+            checks=[
+                VerificationCheck(
+                    name=check_name,
+                    status=status,
+                    observed=observed,
+                    expected=str(expected),
+                )
+            ],
+            summary=(
+                "The requested postcondition is satisfied."
+                if passed
+                else "The requested postcondition is not satisfied."
+            ),
+        )
 
     async def execute(self, command: HardwareCommand) -> CommandReceipt:
         self._validate_connected(command.device_id)

@@ -19,11 +19,12 @@ pytestmark = pytest.mark.skipif(
 @pytest.mark.timeout(30)
 async def test_runtime_controls_mujoco_through_stdio_mcp(tmp_path: Path) -> None:
     pool = MCPConnectionPool()
+    evidence_dir = tmp_path / "evidence"
     adapter = MCPStdioDeviceAdapter(
         adapter_id="robo-mujoco",
         command=[sys.executable, "-m", "vibe.hardware_sim.entrypoint"],
         pool=pool,
-        env={"ROBO_SIM_HEADLESS": "1"},
+        env={"ROBO_SIM_HEADLESS": "1", "ROBO_EVIDENCE_DIR": str(evidence_dir)},
         cwd=str(Path.cwd()),
         startup_timeout_sec=20,
         tool_timeout_sec=20,
@@ -49,6 +50,9 @@ async def test_runtime_controls_mujoco_through_stdio_mcp(tmp_path: Path) -> None
             run_id="mujoco-mcp",
         )
         snapshot = await runtime.observe(MUJOCO_PANDA_DEVICE_ID, run_id="mujoco-mcp")
+        verification = await runtime.verify(
+            MUJOCO_PANDA_DEVICE_ID, criterion="lift_object", run_id="mujoco-mcp"
+        )
         stopped = await runtime.stop(
             MUJOCO_PANDA_DEVICE_ID, reason="test complete", run_id="mujoco-mcp"
         )
@@ -59,4 +63,14 @@ async def test_runtime_controls_mujoco_through_stdio_mcp(tmp_path: Path) -> None
     assert [manifest.adapter_id for manifest in manifests] == ["robo-mujoco"]
     assert receipt.status == "completed"
     assert snapshot.state["viewer"] is False
+    assert len(snapshot.evidence) == 1
+    assert Path(snapshot.evidence[0].uri.removeprefix("file://")).is_relative_to(
+        evidence_dir
+    )
+    assert verification.status == "failed"
+    assert len(verification.evidence) == 1
+    assert verification.evidence_ids == [verification.evidence[0].evidence_id]
+    assert all(
+        check.evidence_ids == verification.evidence_ids for check in verification.checks
+    )
     assert stopped.acknowledged is True

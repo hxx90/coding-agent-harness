@@ -32,7 +32,7 @@ from vibe.core.tools.models import (
     ToolPermissionError as ToolPermissionError,
 )
 from vibe.core.tools.terminal_runtime import TerminalRuntime
-from vibe.core.types import ToolStreamEvent
+from vibe.core.types import ImageAttachment, ToolStreamEvent
 from vibe.core.workspace import Workspace
 from vibe.observability.logging import logger
 from vibe.utils.io import read_safe
@@ -481,3 +481,11 @@ class BaseTool[
         file reads).  The default returns ``None`` (no annotation).
         """
         return None
+
+    def get_result_images(self, result: ToolResult) -> list[ImageAttachment]:
+        """Return trusted image evidence to include in the next model request.
+
+        Images are injected only after the matching tool response has been
+        recorded, preserving provider tool-call adjacency requirements.
+        """
+        return []

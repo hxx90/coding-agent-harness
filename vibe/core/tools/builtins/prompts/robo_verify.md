@@ -1,0 +1,1 @@
+根据设备 Manifest 声明的验证条件，独立核对物理任务结果。使用与已完成动作关联的 criterion 和一致的任务参数；Runtime 会拒绝动作之前的旧时间戳、旧快照及不匹配的验证。`passed` 才表示任务完成；`failed` 表示后置条件未满足；`inconclusive` 表示当前证据不足，需要重新观察、换视角或请求人工确认。不得使用 `robo_execute` 的 `completed` 回执替代此验证结果。

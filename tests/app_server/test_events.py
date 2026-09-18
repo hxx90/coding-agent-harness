@@ -24,12 +24,14 @@ from vibe.app_server.events import (
 from vibe.app_server.models import (
     ApprovalCallbackDetail,
     CompletedEffectState,
+    HardwareVerificationRequiredNoticeDetail,
     IdleSessionStatus,
     PublicCallbackEntry,
     PublicEffectEntry,
     PublicEntryGenerationStatus,
     PublicError,
     PublicMessageEntry,
+    PublicNoticeEntry,
     PublicQueuedTurn,
     PublicReasoningEntry,
     PublicRetryCategory,
@@ -56,6 +58,7 @@ from vibe.core.tools.ui import ToolUIDataAdapter
 from vibe.core.types import (
     AssistantEvent,
     BaseEvent,
+    HardwareVerificationRequiredEvent,
     ImageAttachment,
     InlineImageSource,
     ReasoningEvent,
@@ -674,6 +677,19 @@ def test_tool_call_completes_streamed_text_before_adding_effect() -> None:
 
     with pytest.raises(ValueError, match="frozen"):
         projector.project(ReasoningEvent(content="late", message_id="reasoning-1"))
+
+
+def test_hardware_verification_guard_projects_a_public_notice() -> None:
+    projector = EventProjector("session-1", "turn-1")
+
+    updates = projector.project(HardwareVerificationRequiredEvent(device_count=2))
+
+    assert len(updates) == 1
+    notice = projector.history[0]
+    assert isinstance(notice, PublicNoticeEntry)
+    assert notice.message == "Physical action requires postcondition verification"
+    assert isinstance(notice.detail, HardwareVerificationRequiredNoticeDetail)
+    assert notice.detail.device_count == 2
 
 
 def test_event_sequence_rejects_gaps_and_read_resynchronizes() -> None:

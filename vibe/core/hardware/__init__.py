@@ -16,9 +16,15 @@ from vibe.core.hardware.models import (
     DeviceStatus,
     DeviceTransport,
     HardwareCommand,
+    ObservationEvidence,
+    ObservationModality,
     RunEvent,
     RunTrace,
     StopReceipt,
+    VerificationCapability,
+    VerificationCheck,
+    VerificationReport,
+    VerificationStatus,
 )
 from vibe.core.hardware.runtime import HardwareRuntime, HardwareRuntimeError
 from vibe.core.hardware.simulator import (
@@ -43,8 +49,14 @@ __all__ = [
     "MCPAdapterError",
     "MCPDeviceToolNames",
     "MCPStdioDeviceAdapter",
+    "ObservationEvidence",
+    "ObservationModality",
     "RunEvent",
     "RunTrace",
     "SimulatorAdapterError",
     "StopReceipt",
+    "VerificationCapability",
+    "VerificationCheck",
+    "VerificationReport",
+    "VerificationStatus",
 ]

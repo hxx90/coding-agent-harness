@@ -167,6 +167,7 @@ from vibe.core.types import (
     ContextClearedEvent,
     ContextTooLongError,
     FunctionCall,
+    HardwareVerificationRequiredEvent,
     ImageAttachment,
     LLMChunk,
     LLMMessage,
@@ -1084,6 +1085,33 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
             self.messages.append(injected)
         self._pending_injected_messages.clear()
         return True
+
+    async def _queue_hardware_verification_guard(
+        self, baseline: dict[str, int]
+    ) -> HardwareVerificationRequiredEvent | None:
+        pending = await self.hardware_runtime.pending_verification_revisions()
+        devices = sorted(
+            device_id
+            for device_id, revision in pending.items()
+            if revision > baseline.get(device_id, 0)
+        )
+        if not devices:
+            return None
+        self.messages.append(
+            LLMMessage(
+                role=Role.user,
+                content=(
+                    f"<{VIBE_WARNING_TAG}>Physical actions on {len(devices)} device(s) "
+                    "completed, but their task outcome is still not_verified. "
+                    "Before ending this turn, observe the resulting physical state "
+                    "and call a device-declared robo_verify criterion. Only a passed "
+                    "report permits a success claim; failed or inconclusive reports "
+                    f"must be stated explicitly.</{VIBE_WARNING_TAG}>"
+                ),
+                injected=True,
+            )
+        )
+        return HardwareVerificationRequiredEvent(device_count=len(devices))
 
     def resolve_approval_request(
         self, request_id: str, response: ApprovalResponse, feedback: str | None = None
@@ -2092,6 +2120,9 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
         ):
             yield event
 
+        verification_baseline = (
+            await self.hardware_runtime.pending_verification_revisions()
+        )
         try:
             should_break_loop = False
             first_llm_turn = True
@@ -2149,7 +2180,18 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
 
                 last_message = self.messages[-1]
                 drained = self._drain_pending_injections()
-                should_break_loop = last_message.role != Role.tool and not drained
+                verification_guard = None
+                if last_message.role != Role.tool and not drained:
+                    verification_guard = await self._queue_hardware_verification_guard(
+                        verification_baseline
+                    )
+                    if verification_guard is not None:
+                        yield verification_guard
+                should_break_loop = (
+                    last_message.role != Role.tool
+                    and not drained
+                    and verification_guard is None
+                )
 
                 if user_cancelled:
                     return
@@ -2888,6 +2930,7 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
         extra = tool_instance.get_result_extra(result_model)
         if extra:
             text += "\n\n" + extra
+        result_images = tool_instance.get_result_images(result_model)
 
         result_cancelled = (
             isinstance(result_model, CancellableToolResult) and result_model.cancelled
@@ -2923,6 +2966,19 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
             ),
         ):
             yield ev
+        if result_images:
+            self._pending_injected_messages.append(
+                LLMMessage(
+                    role=Role.user,
+                    content=(
+                        "Physical observation evidence returned by "
+                        f"{tool_call.tool_name}. Use it together with the structured "
+                        "sensor state; do not infer task success from command completion."
+                    ),
+                    images=result_images,
+                    injected=True,
+                )
+            )
         self.stats.tool_calls_succeeded += 1
         logger.info(
             "Tool call completed tool=%s tool_call_id=%s duration_ms=%d outcome=%s",

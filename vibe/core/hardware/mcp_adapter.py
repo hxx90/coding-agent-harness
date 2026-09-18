@@ -14,6 +14,7 @@ from vibe.core.hardware.models import (
     DeviceTransport,
     HardwareCommand,
     StopReceipt,
+    VerificationReport,
 )
 
 
@@ -28,6 +29,7 @@ class MCPDeviceToolNames:
     arm: str = "robo_arm"
     disarm: str = "robo_disarm"
     observe: str = "robo_observe"
+    verify: str = "robo_verify"
     execute: str = "robo_execute"
     stop: str = "robo_stop"
     disconnect: str = "robo_disconnect"
@@ -102,6 +104,15 @@ class MCPStdioDeviceAdapter:
     async def observe(self, device_id: str) -> DeviceSnapshot:
         return await self._call_model(
             self._tools.observe, {"device_id": device_id}, DeviceSnapshot
+        )
+
+    async def verify(
+        self, device_id: str, criterion: str, parameters: dict[str, Any]
+    ) -> VerificationReport:
+        return await self._call_model(
+            self._tools.verify,
+            {"device_id": device_id, "criterion": criterion, "parameters": parameters},
+            VerificationReport,
         )
 
     async def execute(self, command: HardwareCommand) -> CommandReceipt:

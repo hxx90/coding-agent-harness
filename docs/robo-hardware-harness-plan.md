@@ -10,7 +10,9 @@
 
 - `vibe/core/hardware` 的设备 Manifest、Adapter Port、租约、显式武装/解除武装、执行、观察、停止和 JSONL Trace；
 - Mac 可运行的确定性机械臂 Adapter；
-- 受 Runtime 仲裁的 `robo_devices`、`robo_observe`、`robo_execute`、`robo_sequence`、`robo_stop`；
+- 受 Runtime 仲裁的 `robo_devices`、`robo_observe`、`robo_execute`、`robo_sequence`、`robo_verify`、`robo_stop`；
+- MuJoCo 观察可生成会话内 RGB 证据帧，并将图片注入支持视觉的模型上下文；
+- 命令完成与任务完成已经拆分，任务结论只能来自显式后置条件验证；
 - stdio MCP 厂商 Adapter，且要求隐藏原始设备 Tool，防止模型绕过 Runtime；
 - CaP-X OpenAI-compatible Agent Bridge，支持文本、data URL 图片和多轮反馈；
 - 不执行任意 Python 的本地 CaP-X 风格“错误—观察—修复”烟雾测试。
@@ -191,6 +193,7 @@ class HardwareRuntime(Protocol):
 
 - `robo_devices`：发现设备并读取能力；
 - `robo_observe`：读取观测或等待有界条件；
+- `robo_verify`：根据设备声明的后置条件验证任务结果并引用观察证据；
 - `robo_execute`：校验并执行一条类型化能力指令；
 - `robo_sequence`：执行有界且已校验的多步计划；
 - `robo_stop`：停止单台或全部设备，并始终可用。

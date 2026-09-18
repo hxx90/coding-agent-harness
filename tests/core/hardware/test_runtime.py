@@ -4,18 +4,23 @@ import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
 
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 import pytest
 
 from vibe.core.hardware import (
     CommandReceipt,
     CommandStatus,
     DeterministicSimulatorAdapter,
+    DeviceSnapshot,
     HardwareCommand,
     HardwareRuntime,
     HardwareRuntimeError,
+    ObservationEvidence,
+    ObservationModality,
     RunEvent,
     StopReceipt,
+    VerificationReport,
+    VerificationStatus,
 )
 
 
@@ -72,6 +77,88 @@ class UnconfirmedStopAdapter(DeterministicSimulatorAdapter):
     async def disarm(self, device_id: str):
         self.disarm_called = True
         return await super().disarm(device_id)
+
+
+class UntrustedEvidenceAdapter(DeterministicSimulatorAdapter):
+    def __init__(self, evidence_path: Path) -> None:
+        super().__init__()
+        self.evidence_path = evidence_path
+
+    async def observe(self, device_id: str) -> DeviceSnapshot:
+        snapshot = await super().observe(device_id)
+        return snapshot.model_copy(
+            update={
+                "evidence": [
+                    ObservationEvidence(
+                        source_id="camera",
+                        modality=ObservationModality.RGB,
+                        captured_at=datetime.now(UTC),
+                        sequence=snapshot.sequence,
+                        mime_type="image/png",
+                        uri=self.evidence_path.as_uri(),
+                    )
+                ]
+            }
+        )
+
+
+class ExcessiveEvidenceAdapter(DeterministicSimulatorAdapter):
+    def __init__(self, evidence_paths: list[Path]) -> None:
+        super().__init__()
+        self.evidence_paths = evidence_paths
+
+    async def observe(self, device_id: str) -> DeviceSnapshot:
+        snapshot = await super().observe(device_id)
+        evidence = [
+            ObservationEvidence(
+                source_id="camera",
+                modality=ObservationModality.RGB,
+                captured_at=datetime.now(UTC),
+                sequence=snapshot.sequence,
+                mime_type="image/png",
+                uri=path.as_uri(),
+            )
+            for path in self.evidence_paths
+        ]
+        return snapshot.model_copy(update={"evidence": evidence})
+
+
+class InvalidVerificationAdapter(DeterministicSimulatorAdapter):
+    def __init__(self, *, missing_evidence: bool = False) -> None:
+        super().__init__()
+        self.missing_evidence = missing_evidence
+
+    async def verify(
+        self, device_id: str, criterion: str, parameters: dict[str, JsonValue]
+    ) -> VerificationReport:
+        report = await super().verify(device_id, criterion, parameters)
+        if self.missing_evidence:
+            checks = [
+                report.checks[0].model_copy(
+                    update={"evidence_ids": ["missing-evidence"]}
+                )
+            ]
+            return report.model_copy(update={"checks": checks})
+        return report.model_copy(update={"status": VerificationStatus.PASSED})
+
+
+class StaleVerificationAdapter(DeterministicSimulatorAdapter):
+    async def verify(
+        self, device_id: str, criterion: str, parameters: dict[str, JsonValue]
+    ) -> VerificationReport:
+        report = await super().verify(device_id, criterion, parameters)
+        return report.model_copy(
+            update={"observed_at": datetime(2000, 1, 1, tzinfo=UTC)}
+        )
+
+
+class OversizedVerificationAdapter(DeterministicSimulatorAdapter):
+    async def verify(
+        self, device_id: str, criterion: str, parameters: dict[str, JsonValue]
+    ) -> VerificationReport:
+        report = await super().verify(device_id, criterion, parameters)
+        oversized_check = report.checks[0].model_copy(update={"observed": "x" * 70_000})
+        return report.model_copy(update={"checks": [oversized_check]})
 
 
 class CancellationResistantArmAdapter(DeterministicSimulatorAdapter):
@@ -196,6 +283,85 @@ async def test_simulated_arm_completes_a_safe_fold_run(tmp_path: Path) -> None:
     ]
     assert (tmp_path / "traces" / "fold-run.jsonl").is_file()
 
+    await runtime.aclose()
+
+
+@pytest.mark.asyncio
+async def test_completed_action_requires_a_followup_verification_call(
+    tmp_path: Path,
+) -> None:
+    runtime = HardwareRuntime.simulated(trace_dir=tmp_path)
+    await runtime.connect("sim-arm-1", run_id="verification-guard")
+    lease = await runtime.acquire_lease(
+        "sim-arm-1", owner="test", run_id="verification-guard"
+    )
+    await runtime.arm("sim-arm-1", lease_id=lease.lease_id, run_id="verification-guard")
+    await runtime.execute(
+        HardwareCommand(
+            device_id="sim-arm-1",
+            lease_id=lease.lease_id,
+            action="pick",
+            parameters={"object": "cube"},
+        ),
+        run_id="verification-guard",
+    )
+
+    pending = await runtime.pending_verification_revisions()
+    assert set(pending) == {"sim-arm-1"}
+
+    unrelated_report = await runtime.verify(
+        "sim-arm-1",
+        criterion="cloth_folded",
+        parameters={"cloth": "shirt"},
+        run_id="verification-guard",
+    )
+    assert unrelated_report.status == "failed"
+    assert set(await runtime.pending_verification_revisions()) == {"sim-arm-1"}
+
+    report = await runtime.verify(
+        "sim-arm-1",
+        criterion="holding_object",
+        parameters={"object": "cube"},
+        run_id="verification-guard",
+    )
+    assert report.status == "passed"
+    assert await runtime.pending_verification_revisions() == {}
+    verification_event = runtime.read_trace("verification-guard").events[-1]
+    assert verification_event.kind == "task_verification_completed"
+    assert verification_event.payload["status"] == "passed"
+    await runtime.aclose()
+
+
+@pytest.mark.asyncio
+async def test_stale_verification_cannot_clear_a_completed_action(
+    tmp_path: Path,
+) -> None:
+    runtime = HardwareRuntime(adapters=[StaleVerificationAdapter()], trace_dir=tmp_path)
+    await runtime.connect("sim-arm-1", run_id="stale-verification")
+    lease = await runtime.acquire_lease(
+        "sim-arm-1", owner="test", run_id="stale-verification"
+    )
+    await runtime.arm("sim-arm-1", lease_id=lease.lease_id, run_id="stale-verification")
+    await runtime.execute(
+        HardwareCommand(
+            device_id="sim-arm-1",
+            lease_id=lease.lease_id,
+            action="pick",
+            parameters={"object": "cube"},
+        ),
+        run_id="stale-verification",
+    )
+
+    with pytest.raises(HardwareRuntimeError) as error:
+        await runtime.verify(
+            "sim-arm-1",
+            criterion="holding_object",
+            parameters={"object": "cube"},
+            run_id="stale-verification",
+        )
+
+    assert error.value.code == "adapter_contract"
+    assert set(await runtime.pending_verification_revisions()) == {"sim-arm-1"}
     await runtime.aclose()
 
 
@@ -624,4 +790,85 @@ async def test_unconfirmed_post_arm_stop_invalidates_device(tmp_path: Path) -> N
     assert arm_error.value.code == "stopped_before_start"
     assert lease_error.value.code == "not_connected"
     assert adapter.stop_count == 2
+    await runtime.aclose()
+
+
+@pytest.mark.asyncio
+async def test_observe_rejects_evidence_outside_the_runtime_directory(
+    tmp_path: Path,
+) -> None:
+    secret = tmp_path / "secret.png"
+    secret.write_bytes(b"not an observation")
+    trace_dir = tmp_path / "traces"
+    adapter = UntrustedEvidenceAdapter(secret)
+    runtime = HardwareRuntime(adapters=[adapter], trace_dir=trace_dir)
+    await runtime.discover()
+    await runtime.connect("sim-arm-1", run_id="unsafe-evidence")
+
+    with pytest.raises(HardwareRuntimeError) as error:
+        await runtime.observe("sim-arm-1", run_id="unsafe-evidence")
+
+    assert error.value.code == "adapter_contract"
+    await runtime.aclose()
+
+
+@pytest.mark.asyncio
+async def test_observe_rejects_evidence_over_the_total_size_limit(
+    tmp_path: Path,
+) -> None:
+    trace_dir = tmp_path / "traces"
+    evidence_dir = trace_dir / "evidence"
+    evidence_dir.mkdir(parents=True)
+    evidence_paths = [evidence_dir / "first.png", evidence_dir / "second.png"]
+    for path in evidence_paths:
+        path.write_bytes(b"0" * (6 * 1024 * 1024))
+    runtime = HardwareRuntime(
+        adapters=[ExcessiveEvidenceAdapter(evidence_paths)], trace_dir=trace_dir
+    )
+    await runtime.connect("sim-arm-1", run_id="excessive-evidence")
+
+    with pytest.raises(HardwareRuntimeError) as error:
+        await runtime.observe("sim-arm-1", run_id="excessive-evidence")
+
+    assert error.value.code == "adapter_contract"
+    await runtime.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("missing_evidence", [False, True])
+async def test_verify_rejects_inconsistent_adapter_reports(
+    tmp_path: Path, *, missing_evidence: bool
+) -> None:
+    adapter = InvalidVerificationAdapter(missing_evidence=missing_evidence)
+    runtime = HardwareRuntime(adapters=[adapter], trace_dir=tmp_path)
+    await runtime.connect("sim-arm-1", run_id="invalid-verification")
+
+    with pytest.raises(HardwareRuntimeError) as error:
+        await runtime.verify(
+            "sim-arm-1",
+            criterion="holding_object",
+            parameters={"object": "cube"},
+            run_id="invalid-verification",
+        )
+
+    assert error.value.code == "adapter_contract"
+    await runtime.aclose()
+
+
+@pytest.mark.asyncio
+async def test_verify_rejects_an_oversized_report(tmp_path: Path) -> None:
+    runtime = HardwareRuntime(
+        adapters=[OversizedVerificationAdapter()], trace_dir=tmp_path
+    )
+    await runtime.connect("sim-arm-1", run_id="oversized-verification")
+
+    with pytest.raises(HardwareRuntimeError) as error:
+        await runtime.verify(
+            "sim-arm-1",
+            criterion="holding_object",
+            parameters={"object": "cube"},
+            run_id="oversized-verification",
+        )
+
+    assert error.value.code == "adapter_contract"
     await runtime.aclose()

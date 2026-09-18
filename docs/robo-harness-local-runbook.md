@@ -76,6 +76,7 @@ disabled_tools = [
   "robo_arm",
   "robo_disarm",
   "robo_observe",
+  "robo_verify",
   "robo_execute",
   "robo_stop",
   "robo_disconnect",
@@ -146,13 +147,14 @@ CaP-X 客户端需要发送 `Authorization: Bearer <token>`。
 
 ## 四、接入不同型号机械臂
 
-第一版支持本地 stdio MCP Adapter。厂商 Server 需要实现以下八个 Tool：
+第一版支持本地 stdio MCP Adapter。厂商 Server 需要实现以下九个 Tool：
 
 - `robo_devices`
 - `robo_connect`
 - `robo_arm`
 - `robo_disarm`
 - `robo_observe`
+- `robo_verify`
 - `robo_execute`
 - `robo_stop`
 - `robo_disconnect`
@@ -172,15 +174,18 @@ disabled_tools = [
   "robo_arm",
   "robo_disarm",
   "robo_observe",
+  "robo_verify",
   "robo_execute",
   "robo_stop",
   "robo_disconnect",
 ]
 ```
 
-`name` 必须以 `robo-` 开头。八个原始 Tool 必须全部放入 `disabled_tools`，否则 Robo 会拒绝把该 Server 注册成硬件 Adapter。这是为了防止模型绕过 `HardwareRuntime` 的租约、武装、审批、追踪和停止语义直接调用厂商运动接口。
+`name` 必须以 `robo-` 开头。九个原始 Tool 必须全部放入 `disabled_tools`，否则 Robo 会拒绝把该 Server 注册成硬件 Adapter。这是为了防止模型绕过 `HardwareRuntime` 的租约、武装、审批、追踪、任务验证和停止语义直接调用厂商接口。
 
 Server 返回的 `DeviceCapabilityManifest` 必须声明设备 ID、厂商、型号、设备类型和支持动作；关节数、单位、坐标系、固件和安全限制放在 `metadata`。MCP 负责高层发现与调用，不负责伺服、看门狗或物理急停。
+
+每个 `VerificationCapability` 还应通过 `applicable_actions` 声明它验证哪些动作，并用 `parameter_bindings` 声明“验证参数名 -> 动作参数名”的映射。Runtime 只会用动作完成之后、映射参数一致且 `snapshot_sequence` 更新的报告解除验证门禁；旧帧或无关条件不会被当成该动作的后置条件。
 
 ## 五、接入官方 CaP-X Bench
 

@@ -48,6 +48,7 @@ async def test_deferred_initialization_registers_mcp_hardware_adapter(
         "robo_arm",
         "robo_disarm",
         "robo_observe",
+        "robo_verify",
         "robo_execute",
         "robo_stop",
         "robo_disconnect",

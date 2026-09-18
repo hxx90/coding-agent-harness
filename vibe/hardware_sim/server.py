@@ -35,6 +35,14 @@ def create_server(adapter: RobosuiteSimulatorAdapter) -> FastMCP:
     async def observe(device_id: str) -> dict[str, Any]:
         return (await adapter.observe(device_id)).model_dump(mode="json")
 
+    @server.tool(name="robo_verify", structured_output=True)
+    async def verify(
+        device_id: str, criterion: str, parameters: dict[str, JsonValue] | None = None
+    ) -> dict[str, Any]:
+        return (
+            await adapter.verify(device_id, criterion, parameters or {})
+        ).model_dump(mode="json")
+
     @server.tool(name="robo_execute", structured_output=True)
     async def execute(
         command_id: str,
@@ -65,7 +73,9 @@ def create_server(adapter: RobosuiteSimulatorAdapter) -> FastMCP:
 
 
 def run_server(settings: SimulatorSettings) -> None:
-    adapter = RobosuiteSimulatorAdapter(show_viewer=not settings.headless)
+    adapter = RobosuiteSimulatorAdapter(
+        show_viewer=not settings.headless, evidence_dir=settings.evidence_dir
+    )
     try:
         create_server(adapter).run(transport="stdio")
     finally:

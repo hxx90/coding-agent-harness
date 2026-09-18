@@ -58,6 +58,101 @@ async def test_runtime_controls_headless_mujoco_panda(
 
 
 @pytest.mark.asyncio
+async def test_completed_gripper_command_does_not_imply_task_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    system_platform = {"Darwin": "darwin", "Linux": "linux", "Windows": "win32"}
+    monkeypatch.setattr(sys, "platform", system_platform[platform.system()])
+    adapter = RobosuiteSimulatorAdapter(show_viewer=False)
+    runtime = HardwareRuntime(adapters=[adapter], trace_dir=tmp_path)
+
+    await runtime.connect(MUJOCO_PANDA_DEVICE_ID, run_id="false-success")
+    lease = await runtime.acquire_lease(
+        MUJOCO_PANDA_DEVICE_ID, owner="test", run_id="false-success"
+    )
+    await runtime.arm(
+        MUJOCO_PANDA_DEVICE_ID, lease_id=lease.lease_id, run_id="false-success"
+    )
+    receipt = await runtime.execute(
+        HardwareCommand(
+            device_id=MUJOCO_PANDA_DEVICE_ID,
+            lease_id=lease.lease_id,
+            action="gripper_close",
+        ),
+        run_id="false-success",
+    )
+    observed = await runtime.observe(MUJOCO_PANDA_DEVICE_ID, run_id="false-success")
+    verification = await runtime.verify(
+        MUJOCO_PANDA_DEVICE_ID, criterion="lift_object", run_id="false-success"
+    )
+
+    assert receipt.status == "completed"
+    assert observed.state["grasped"] is False
+    cube_height = observed.state["cube_height_above_table_m"]
+    assert isinstance(cube_height, int | float)
+    assert cube_height < 0.04
+    distance = observed.state["gripper_to_cube_distance_m"]
+    assert isinstance(distance, int | float)
+    assert distance > 0.05
+    assert "reward" not in observed.state
+    assert "task_success" not in observed.state
+    assert verification.status == "failed"
+    assert await runtime.pending_verification_revisions() == {}
+    assert {check.name: check.status for check in verification.checks} == {
+        "object_grasped": "failed",
+        "object_lifted": "failed",
+    }
+
+    await runtime.execute(
+        HardwareCommand(
+            device_id=MUJOCO_PANDA_DEVICE_ID,
+            lease_id=lease.lease_id,
+            action="move_cartesian",
+            parameters={"delta_xyz": [0.0, 0.0, 0.01], "steps": 1},
+        ),
+        run_id="false-success",
+    )
+    assert set(await runtime.pending_verification_revisions()) == {
+        MUJOCO_PANDA_DEVICE_ID
+    }
+    corrective_verification = await runtime.verify(
+        MUJOCO_PANDA_DEVICE_ID, criterion="lift_object", run_id="false-success"
+    )
+    assert corrective_verification.status == "failed"
+    assert await runtime.pending_verification_revisions() == {}
+
+    await runtime.aclose()
+
+
+@pytest.mark.asyncio
+async def test_observe_captures_visual_evidence_in_the_trace_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    system_platform = {"Darwin": "darwin", "Linux": "linux", "Windows": "win32"}
+    monkeypatch.setattr(sys, "platform", system_platform[platform.system()])
+    evidence_dir = tmp_path / "evidence"
+    adapter = RobosuiteSimulatorAdapter(show_viewer=False, evidence_dir=evidence_dir)
+    runtime = HardwareRuntime(adapters=[adapter], trace_dir=tmp_path)
+
+    await runtime.connect(MUJOCO_PANDA_DEVICE_ID, run_id="visual-observation")
+    observed = await runtime.observe(
+        MUJOCO_PANDA_DEVICE_ID, run_id="visual-observation"
+    )
+
+    assert len(observed.evidence) == 1
+    evidence = observed.evidence[0]
+    assert evidence.modality == "rgb"
+    assert evidence.source_id == "agentview"
+    assert evidence.mime_type == "image/png"
+    assert evidence.uri.startswith("file://")
+    image_path = Path(evidence.uri.removeprefix("file://"))
+    assert image_path.is_relative_to(evidence_dir)
+    assert image_path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+
+    await runtime.aclose()
+
+
+@pytest.mark.asyncio
 async def test_stop_interrupts_long_mujoco_motion(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

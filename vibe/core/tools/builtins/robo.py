@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 import subprocess
 from typing import Literal
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from pydantic import BaseModel, Field, JsonValue
@@ -17,8 +18,10 @@ from vibe.core.hardware import (
     HardwareCommand,
     HardwareRuntime,
     HardwareRuntimeError,
+    ObservationEvidence,
     RunTrace,
     StopReceipt,
+    VerificationReport,
 )
 from vibe.core.tools.base import (
     BaseTool,
@@ -29,7 +32,8 @@ from vibe.core.tools.base import (
     ToolPermission,
 )
 from vibe.core.tools.models import PermissionContext
-from vibe.core.types import ToolStreamEvent
+from vibe.core.types import FileImageSource, ImageAttachment, ToolStreamEvent
+from vibe.utils.paths import file_uri_to_path
 
 
 class RoboDevicesArgs(BaseModel):
@@ -137,6 +141,7 @@ class RoboExecuteArgs(BaseModel):
 
 class RoboExecuteResult(BaseModel):
     receipt: CommandReceipt
+    task_outcome: Literal["not_verified"] = "not_verified"
 
 
 class RoboExecuteConfig(BaseToolConfig):
@@ -175,6 +180,7 @@ class RoboSequenceArgs(BaseModel):
 
 class RoboSequenceResult(BaseModel):
     receipts: list[CommandReceipt]
+    task_outcome: Literal["not_verified"] = "not_verified"
 
 
 class RoboSequenceConfig(BaseToolConfig):
@@ -258,6 +264,46 @@ class RoboObserve(
         )
         yield RoboObserveResult(snapshot=snapshot, trace=trace, workspace=workspace)
 
+    def get_result_images(self, result: RoboObserveResult) -> list[ImageAttachment]:
+        return _evidence_images(result.snapshot.evidence if result.snapshot else [])
+
+
+class RoboVerifyArgs(BaseModel):
+    device_id: str
+    criterion: str
+    parameters: dict[str, JsonValue] = Field(default_factory=dict)
+    run_id: str | None = None
+
+
+class RoboVerifyResult(BaseModel):
+    report: VerificationReport
+
+
+class RoboVerifyConfig(BaseToolConfig):
+    permission: ToolPermission = ToolPermission.ALWAYS
+
+
+class RoboVerify(
+    BaseTool[RoboVerifyArgs, RoboVerifyResult, RoboVerifyConfig, BaseToolState]
+):
+    async def run(
+        self, args: RoboVerifyArgs, ctx: InvokeContext | None = None
+    ) -> AsyncGenerator[ToolStreamEvent | RoboVerifyResult, None]:
+        runtime = _runtime(ctx)
+        try:
+            report = await runtime.verify(
+                args.device_id,
+                criterion=args.criterion,
+                parameters=args.parameters,
+                run_id=_run_id(args.run_id, ctx),
+            )
+        except HardwareRuntimeError as exc:
+            raise ToolError(str(exc), model_detail=f"error_code={exc.code}") from exc
+        yield RoboVerifyResult(report=report)
+
+    def get_result_images(self, result: RoboVerifyResult) -> list[ImageAttachment]:
+        return _evidence_images(result.report.evidence)
+
 
 class RoboStopArgs(BaseModel):
     device_id: str
@@ -307,6 +353,27 @@ def _required(value: str | None, name: str) -> str:
     if value:
         return value
     raise ToolError(f"{name} is required for this action")
+
+
+def _evidence_images(
+    evidence_items: list[ObservationEvidence],
+) -> list[ImageAttachment]:
+    images: list[ImageAttachment] = []
+    for evidence in evidence_items:
+        parsed = urlparse(evidence.uri)
+        if parsed.scheme != "file":
+            continue
+        path = Path(file_uri_to_path(evidence.uri))
+        if not path.is_file() or not evidence.mime_type.startswith("image/"):
+            continue
+        images.append(
+            ImageAttachment(
+                source=FileImageSource(path=path),
+                alias=path.name,
+                mime_type=evidence.mime_type,
+            )
+        )
+    return images
 
 
 def _observe_workspace(cwd: Path, max_files: int) -> WorkspaceObservation:
@@ -369,5 +436,9 @@ __all__ = [
     "RoboStopArgs",
     "RoboStopConfig",
     "RoboStopResult",
+    "RoboVerify",
+    "RoboVerifyArgs",
+    "RoboVerifyConfig",
+    "RoboVerifyResult",
     "WorkspaceObservation",
 ]
