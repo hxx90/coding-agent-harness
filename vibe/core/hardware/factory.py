@@ -73,6 +73,9 @@ def _mcp_adapters(
                 env={
                     **server.env,
                     "ROBO_EVIDENCE_DIR": str(evidence_dir / server.name),
+                    "ROBO_RECORDING_DIR": str(
+                        evidence_dir.parent / "recordings" / server.name
+                    ),
                 },
                 cwd=server.cwd,
                 startup_timeout_sec=server.startup_timeout_sec,

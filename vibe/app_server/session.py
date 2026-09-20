@@ -69,6 +69,8 @@ from vibe.app_server.protocol import (
     ClientToolWriteTextFileParams,
     ContextInjectParams,
     ContextInjectResponse,
+    HardwareStopParams,
+    HardwareStopResponse,
     Notification,
     ProtocolError,
     ProtocolErrorCode,
@@ -676,6 +678,19 @@ class AppServerSession:  # noqa: PLR0904
             if self._interrupt_already_settled(exc):
                 return
             raise
+
+    async def stop_hardware(
+        self, reason: str = "operator emergency stop"
+    ) -> HardwareStopResponse:
+        client = await self._ensure_attached()
+        return validate_wire(
+            HardwareStopResponse,
+            await client.request(
+                "hardware/stop",
+                HardwareStopParams(session_id=self.session_id, reason=reason),
+                wait_for_incoming=True,
+            ),
+        )
 
     def _active_public_turn_id(self) -> str | None:
         return next(

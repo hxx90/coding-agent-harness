@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+import logging
 import math
 from pathlib import Path
 import struct
@@ -28,6 +29,7 @@ from vibe.core.hardware import (
     VerificationReport,
     VerificationStatus,
 )
+from vibe.hardware_sim._viewer import ViewerProcess
 
 MUJOCO_PANDA_DEVICE_ID = "mujoco-panda-1"
 _CARTESIAN_DIMENSIONS = 3
@@ -35,6 +37,9 @@ _IMAGE_DIMENSIONS = 3
 _RGB_CHANNELS = 3
 _MAX_ACTION_STEPS = 200
 _LIFT_HEIGHT_THRESHOLD_M = 0.04
+_CAPTURE_CAMERA = "sideview"
+
+logger = logging.getLogger(__name__)
 
 
 class RobosuiteSimulatorError(RuntimeError):
@@ -49,12 +54,18 @@ class RobosuiteSimulatorAdapter:
         show_viewer: bool = True,
         control_frequency: int = 20,
         evidence_dir: Path | None = None,
+        recording_dir: Path | None = None,
     ) -> None:
         self._adapter_id = adapter_id
         self._show_viewer = show_viewer
         self._control_frequency = control_frequency
         self._evidence_dir = evidence_dir
+        self._recording_dir = recording_dir
         self._environment: Any | None = None
+        self._video_writer: Any | None = None
+        self._recording_path: Path | None = None
+        self._viewer: ViewerProcess | None = None
+        self._viewer_failed = False
         self._observation: dict[str, Any] = {}
         self._home_cube_position: list[float] = []
         self._connected = False
@@ -123,6 +134,7 @@ class RobosuiteSimulatorAdapter:
                     "control_mode": "osc_pose",
                     "dof": 7,
                     "has_viewer": self._show_viewer,
+                    "records_video": self._recording_dir is not None,
                     "is_physical": False,
                 },
             )
@@ -238,10 +250,12 @@ class RobosuiteSimulatorAdapter:
     async def stop(self, device_id: str, reason: str) -> StopReceipt:
         self._validate_device(device_id)
         self._armed = False
-        self._stopped = True
-        self._sequence += 1
-        if self._environment is not None:
-            self._step_once(self._zero_action())
+        if not self._stopped:
+            self._stopped = True
+            self._sequence += 1
+            if self._environment is not None:
+                self._step_once(self._zero_action())
+        self._finish_recording()
         return StopReceipt(
             device_id=device_id,
             acknowledged=True,
@@ -273,13 +287,17 @@ class RobosuiteSimulatorAdapter:
             raise RobosuiteSimulatorError(
                 "Robosuite is not installed; run `uv sync --extra simulator`"
             ) from exc
+        camera_enabled = any((self._evidence_dir, self._recording_dir))
         environment = robosuite.make(
             env_name="Lift",
             robots="Panda",
-            has_renderer=self._show_viewer,
-            has_offscreen_renderer=self._evidence_dir is not None,
-            use_camera_obs=self._evidence_dir is not None,
-            camera_names="agentview",
+            # The native Viewer renders a state mirror in its own process.
+            # Robosuite only needs an offscreen context when evidence or MP4
+            # capture is enabled in this simulator process.
+            has_renderer=False,
+            has_offscreen_renderer=camera_enabled,
+            use_camera_obs=camera_enabled,
+            camera_names=_CAPTURE_CAMERA,
             camera_heights=384,
             camera_widths=384,
             ignore_done=True,
@@ -337,8 +355,30 @@ class RobosuiteSimulatorAdapter:
         self._render()
 
     def _render(self) -> None:
-        if self._show_viewer and self._environment is not None:
-            self._environment.render()
+        if self._environment is None:
+            return
+        self._publish_viewer_state()
+        image = self._camera_image()
+        if image is None:
+            return
+        self._record_frame(image)
+
+    def _publish_viewer_state(self) -> None:
+        if not self._show_viewer or self._viewer_failed:
+            return
+        if self._viewer is None:
+            self._viewer = ViewerProcess()
+        try:
+            simulation = self._require_environment().sim
+            self._viewer.publish(simulation.model, simulation.data)
+        except Exception:
+            logger.warning("Robo simulator Viewer failed", exc_info=True)
+            try:
+                self._viewer.close()
+            except Exception:
+                logger.warning("Robo simulator Viewer cleanup failed", exc_info=True)
+            self._viewer = None
+            self._viewer_failed = True
 
     def _zero_action(self) -> Any:
         lower_bound, _ = self._require_environment().action_spec
@@ -368,8 +408,8 @@ class RobosuiteSimulatorAdapter:
     def _capture_rgb_evidence(self) -> list[ObservationEvidence]:
         if self._evidence_dir is None:
             return []
-        image = self._observation.get("agentview_image")
-        if image is None or getattr(image, "ndim", None) != _IMAGE_DIMENSIONS:
+        image = self._camera_image()
+        if image is None:
             return []
         height, width, channels = image.shape
         if channels != _RGB_CHANNELS:
@@ -382,7 +422,7 @@ class RobosuiteSimulatorAdapter:
         return [
             ObservationEvidence(
                 evidence_id=evidence_id,
-                source_id="agentview",
+                source_id=_CAPTURE_CAMERA,
                 modality=ObservationModality.RGB,
                 captured_at=captured_at,
                 sequence=self._sequence,
@@ -399,7 +439,7 @@ class RobosuiteSimulatorAdapter:
         return {
             "mode": mode,
             "environment": "Lift",
-            "viewer": self._show_viewer,
+            "viewer": self._viewer is not None and self._viewer.is_running,
             "joint_positions": self._float_values("robot0_joint_pos"),
             "end_effector_position": end_effector_position,
             "gripper_positions": self._float_values("robot0_gripper_qpos"),
@@ -412,7 +452,52 @@ class RobosuiteSimulatorAdapter:
             "cube_displacement_from_home_m": self._distance(
                 self._home_cube_position, cube_position
             ),
+            "recording_uri": (
+                self._recording_path.as_uri()
+                if self._recording_path is not None
+                else None
+            ),
         }
+
+    def _camera_image(self) -> Any | None:
+        image = self._observation.get(f"{_CAPTURE_CAMERA}_image")
+        if image is None or getattr(image, "ndim", None) != _IMAGE_DIMENSIONS:
+            return None
+        if image.shape[2] != _RGB_CHANNELS:
+            return None
+        return image[::-1]
+
+    def _record_frame(self, image: Any) -> None:
+        if self._recording_dir is None:
+            return
+        import cv2
+
+        cv2_module: Any = cv2
+        height, width, _ = image.shape
+        if self._video_writer is None:
+            self._recording_dir.mkdir(parents=True, exist_ok=True)
+            recording_id = uuid4().hex
+            self._recording_path = (
+                self._recording_dir / f"mujoco-panda-{recording_id}.mp4"
+            ).resolve()
+            self._video_writer = cv2.VideoWriter(
+                str(self._recording_path),
+                cv2_module.VideoWriter_fourcc(*"mp4v"),
+                float(self._control_frequency),
+                (width, height),
+            )
+            if not self._video_writer.isOpened():
+                self._video_writer.release()
+                self._video_writer = None
+                self._recording_path = None
+                raise RobosuiteSimulatorError("Could not open MuJoCo MP4 recorder")
+        self._video_writer.write(image[..., ::-1])
+
+    def _finish_recording(self) -> None:
+        if self._video_writer is None:
+            return
+        self._video_writer.release()
+        self._video_writer = None
 
     def _float_values(self, key: str) -> list[float]:
         return [float(value) for value in self._observation.get(key, [])]
@@ -439,8 +524,16 @@ class RobosuiteSimulatorAdapter:
         return math.dist(first, second)
 
     def _close_environment(self) -> None:
+        self._finish_recording()
         if self._environment is not None:
             self._environment.close()
+        if self._viewer is not None:
+            try:
+                self._viewer.close()
+            except Exception:
+                logger.warning("Robo simulator Viewer cleanup failed", exc_info=True)
+            self._viewer = None
+        self._viewer_failed = False
         self._environment = None
         self._observation = {}
         self._home_cube_position = []

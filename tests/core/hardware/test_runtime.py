@@ -11,6 +11,7 @@ from vibe.core.hardware import (
     CommandReceipt,
     CommandStatus,
     DeterministicSimulatorAdapter,
+    DeviceCapabilityManifest,
     DeviceSnapshot,
     HardwareCommand,
     HardwareRuntime,
@@ -216,6 +217,102 @@ class MismatchedStopAdapter(DeterministicSimulatorAdapter):
     async def stop(self, device_id: str, reason: str) -> StopReceipt:
         receipt = await super().stop(device_id, reason)
         return receipt.model_copy(update={"device_id": "wrong-device"})
+
+
+class ReconnectTrackingAdapter(DeterministicSimulatorAdapter):
+    def __init__(self) -> None:
+        super().__init__()
+        self.connect_count = 0
+        self.disconnect_count = 0
+
+    async def connect(self, device_id: str):
+        self.connect_count += 1
+        return await super().connect(device_id)
+
+    async def disconnect(self, device_id: str) -> None:
+        self.disconnect_count += 1
+        await super().disconnect(device_id)
+
+
+class BlockingConnectAdapter(DeterministicSimulatorAdapter):
+    def __init__(self) -> None:
+        super().__init__()
+        self.connect_started = asyncio.Event()
+        self.finish_connect = asyncio.Event()
+        self.stop_called = asyncio.Event()
+
+    async def connect(self, device_id: str):
+        self.connect_started.set()
+        await self.finish_connect.wait()
+        return await super().connect(device_id)
+
+    async def stop(self, device_id: str, reason: str) -> StopReceipt:
+        self.stop_called.set()
+        return await super().stop(device_id, reason)
+
+
+class CancellationResistantConnectAdapter(BlockingConnectAdapter):
+    async def connect(self, device_id: str):
+        self.connect_started.set()
+        try:
+            await self.finish_connect.wait()
+        except asyncio.CancelledError:
+            await self.finish_connect.wait()
+        return await DeterministicSimulatorAdapter.connect(self, device_id)
+
+
+class FailingPostConnectStopAdapter(BlockingConnectAdapter):
+    def __init__(self) -> None:
+        super().__init__()
+        self.stop_count = 0
+
+    async def stop(self, device_id: str, reason: str) -> StopReceipt:
+        self.stop_count += 1
+        if self.stop_count == 2:
+            raise RuntimeError("post-connect stop failed")
+        return await super().stop(device_id, reason)
+
+
+class NamedStopAdapter(DeterministicSimulatorAdapter):
+    def __init__(self, *, adapter_id: str, device_id: str, block_stop: bool) -> None:
+        super().__init__()
+        self._named_adapter_id = adapter_id
+        self._named_device_id = device_id
+        self._block_stop = block_stop
+        self.stop_started = asyncio.Event()
+        self.finish_stop = asyncio.Event()
+
+    @property
+    def adapter_id(self) -> str:
+        return self._named_adapter_id
+
+    async def discover(self) -> list[DeviceCapabilityManifest]:
+        [manifest] = await super().discover()
+        return [
+            manifest.model_copy(
+                update={
+                    "adapter_id": self.adapter_id,
+                    "device_id": self._named_device_id,
+                }
+            )
+        ]
+
+    async def connect(self, device_id: str) -> DeviceSnapshot:
+        assert device_id == self._named_device_id
+        snapshot = await super().connect("sim-arm-1")
+        return snapshot.model_copy(update={"device_id": device_id})
+
+    async def stop(self, device_id: str, reason: str) -> StopReceipt:
+        assert device_id == self._named_device_id
+        self.stop_started.set()
+        if self._block_stop:
+            await self.finish_stop.wait()
+        receipt = await super().stop("sim-arm-1", reason)
+        return receipt.model_copy(update={"device_id": device_id})
+
+    async def disconnect(self, device_id: str) -> None:
+        assert device_id == self._named_device_id
+        await super().disconnect("sim-arm-1")
 
 
 class MismatchedPostArmStopAdapter(CancellationResistantArmAdapter):
@@ -790,6 +887,226 @@ async def test_unconfirmed_post_arm_stop_invalidates_device(tmp_path: Path) -> N
     assert arm_error.value.code == "stopped_before_start"
     assert lease_error.value.code == "not_connected"
     assert adapter.stop_count == 2
+    await runtime.aclose()
+
+
+@pytest.mark.asyncio
+async def test_stop_then_release_is_idempotent(tmp_path: Path) -> None:
+    runtime = HardwareRuntime.simulated(trace_dir=tmp_path)
+    await runtime.connect("sim-arm-1", run_id="release-after-stop")
+    lease = await runtime.acquire_lease(
+        "sim-arm-1", owner="test", run_id="release-after-stop"
+    )
+    await runtime.arm("sim-arm-1", lease_id=lease.lease_id, run_id="release-after-stop")
+
+    await runtime.stop("sim-arm-1", reason="task complete", run_id="release-after-stop")
+    await runtime.release_lease(
+        "sim-arm-1", lease_id=lease.lease_id, run_id="release-after-stop"
+    )
+    await runtime.release_lease(
+        "sim-arm-1", lease_id=lease.lease_id, run_id="release-after-stop"
+    )
+
+    assert [
+        event.kind for event in runtime.read_trace("release-after-stop").events
+    ].count("lease_released") == 1
+    await runtime.aclose()
+
+
+@pytest.mark.asyncio
+async def test_global_stop_stops_all_connected_hardware(tmp_path: Path) -> None:
+    runtime = HardwareRuntime.simulated(trace_dir=tmp_path)
+    await runtime.connect("sim-arm-1", run_id="global-stop")
+
+    report = await runtime.stop_all(reason="operator emergency", run_id="global-stop")
+
+    assert report.all_acknowledged is True
+    assert [receipt.device_id for receipt in report.receipts] == ["sim-arm-1"]
+    assert (await runtime.observe("sim-arm-1", run_id="global-stop")).status == (
+        "stopped"
+    )
+    await runtime.aclose()
+
+
+@pytest.mark.asyncio
+async def test_global_stop_also_stops_a_device_during_initial_connect(
+    tmp_path: Path,
+) -> None:
+    adapter = BlockingConnectAdapter()
+    runtime = HardwareRuntime(adapters=[adapter], trace_dir=tmp_path)
+    connecting = asyncio.create_task(
+        runtime.connect("sim-arm-1", run_id="global-stop-connect")
+    )
+    await adapter.connect_started.wait()
+
+    stopping = asyncio.create_task(
+        runtime.stop_all(reason="operator emergency", run_id="global-stop-connect")
+    )
+    await adapter.stop_called.wait()
+    adapter.finish_connect.set()
+
+    with pytest.raises(HardwareRuntimeError) as error:
+        await connecting
+    report = await stopping
+    assert error.value.code == "stopped_before_start"
+    assert report.all_acknowledged is True
+    assert [receipt.device_id for receipt in report.receipts] == ["sim-arm-1"]
+    await runtime.aclose()
+
+
+@pytest.mark.asyncio
+async def test_global_stop_reports_a_failed_post_connect_confirmation(
+    tmp_path: Path,
+) -> None:
+    adapter = FailingPostConnectStopAdapter()
+    runtime = HardwareRuntime(adapters=[adapter], trace_dir=tmp_path)
+    connecting = asyncio.create_task(
+        runtime.connect("sim-arm-1", run_id="failed-connect-stop")
+    )
+    await adapter.connect_started.wait()
+    stopping = asyncio.create_task(
+        runtime.stop_all(reason="operator emergency", run_id="failed-connect-stop")
+    )
+    await adapter.stop_called.wait()
+    adapter.finish_connect.set()
+
+    with pytest.raises(HardwareRuntimeError):
+        await connecting
+    report = await stopping
+
+    assert report.all_acknowledged is False
+    assert "sim-arm-1" in report.failures
+    await runtime.aclose()
+
+
+@pytest.mark.asyncio
+async def test_connect_retry_waits_for_timed_out_connection_to_finish(
+    tmp_path: Path,
+) -> None:
+    adapter = CancellationResistantConnectAdapter()
+    runtime = HardwareRuntime(
+        adapters=[adapter], trace_dir=tmp_path, global_stop_timeout_seconds=0.01
+    )
+    connecting = asyncio.create_task(
+        runtime.connect("sim-arm-1", run_id="timed-out-connect")
+    )
+    await adapter.connect_started.wait()
+    retrying: asyncio.Task[DeviceSnapshot] | None = None
+
+    try:
+        report = await runtime.stop_all(
+            reason="operator emergency", run_id="timed-out-connect"
+        )
+        retry_report = await runtime.stop_all(
+            reason="operator emergency retry", run_id="timed-out-connect"
+        )
+        retrying = asyncio.create_task(
+            runtime.connect("sim-arm-1", run_id="timed-out-connect")
+        )
+        await asyncio.sleep(0)
+        assert retrying.done()
+        with pytest.raises(HardwareRuntimeError) as retry_error:
+            await retrying
+
+        assert "sim-arm-1" in report.failures
+        assert "sim-arm-1" in retry_report.failures
+        assert retry_report.all_acknowledged is False
+        assert retry_error.value.code == "device_busy"
+    finally:
+        adapter.finish_connect.set()
+        for task in (connecting, retrying):
+            if task is not None and not task.done():
+                task.cancel()
+        for task in (connecting, retrying):
+            if task is not None:
+                try:
+                    await task
+                except BaseException:
+                    pass
+        await runtime.aclose()
+
+
+@pytest.mark.asyncio
+async def test_closing_runtime_cancels_a_connection_in_progress(tmp_path: Path) -> None:
+    adapter = BlockingConnectAdapter()
+    runtime = HardwareRuntime(adapters=[adapter], trace_dir=tmp_path)
+    connecting = asyncio.create_task(
+        runtime.connect("sim-arm-1", run_id="close-during-connect")
+    )
+    await adapter.connect_started.wait()
+
+    try:
+        await runtime.aclose()
+        assert connecting.done()
+        with pytest.raises(asyncio.CancelledError):
+            await connecting
+    finally:
+        adapter.finish_connect.set()
+        if not connecting.done():
+            connecting.cancel()
+        try:
+            await connecting
+        except BaseException:
+            pass
+
+
+@pytest.mark.asyncio
+async def test_global_stop_runs_device_stops_concurrently_and_times_out(
+    tmp_path: Path,
+) -> None:
+    slow = NamedStopAdapter(
+        adapter_id="slow-adapter", device_id="slow-arm", block_stop=True
+    )
+    fast = NamedStopAdapter(
+        adapter_id="fast-adapter", device_id="fast-arm", block_stop=False
+    )
+    runtime = HardwareRuntime(
+        adapters=[slow, fast], trace_dir=tmp_path, global_stop_timeout_seconds=0.05
+    )
+    await runtime.connect("slow-arm", run_id="bounded-global-stop")
+    await runtime.connect("fast-arm", run_id="bounded-global-stop")
+
+    report = await runtime.stop_all(
+        reason="operator emergency", run_id="bounded-global-stop"
+    )
+
+    assert fast.stop_started.is_set()
+    assert [receipt.device_id for receipt in report.receipts] == ["fast-arm"]
+    assert "slow-arm" in report.failures
+    await runtime.aclose()
+
+
+@pytest.mark.asyncio
+async def test_reconnect_requires_stop_and_recovers_with_a_fresh_lease(
+    tmp_path: Path,
+) -> None:
+    adapter = ReconnectTrackingAdapter()
+    runtime = HardwareRuntime(adapters=[adapter], trace_dir=tmp_path)
+    await runtime.connect("sim-arm-1", run_id="safe-reconnect")
+    lease = await runtime.acquire_lease(
+        "sim-arm-1", owner="test", run_id="safe-reconnect"
+    )
+    await runtime.arm("sim-arm-1", lease_id=lease.lease_id, run_id="safe-reconnect")
+
+    with pytest.raises(HardwareRuntimeError) as error:
+        await runtime.connect("sim-arm-1", run_id="safe-reconnect")
+
+    assert error.value.code == "stop_required"
+    assert adapter.connect_count == 1
+
+    await runtime.stop("sim-arm-1", reason="recover", run_id="safe-reconnect")
+    await runtime.release_lease(
+        "sim-arm-1", lease_id=lease.lease_id, run_id="safe-reconnect"
+    )
+    recovered = await runtime.connect("sim-arm-1", run_id="safe-reconnect")
+    replacement = await runtime.acquire_lease(
+        "sim-arm-1", owner="retry", run_id="safe-reconnect"
+    )
+
+    assert recovered.status == "connected"
+    assert replacement.lease_id != lease.lease_id
+    assert adapter.connect_count == 2
+    assert adapter.disconnect_count == 1
     await runtime.aclose()
 
 

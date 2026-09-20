@@ -28,6 +28,8 @@ from vibe.app_server.protocol import (
     ContextInjectParams,
     ContextInjectResponse,
     EmptyResponse,
+    HardwareStopParams,
+    HardwareStopResponse,
     ProtocolErrorCode,
     RuntimeMutationResponse,
     RuntimeUpdatedParams,
@@ -452,6 +454,13 @@ class SessionBackendQueuedTurnSteering(Protocol):
     async def steer_queued_turn(
         self, params: TurnQueueSteerParams
     ) -> SessionBackendResult[TurnQueueSteerResponse]: ...
+
+
+@runtime_checkable
+class SessionBackendHardwareControl(Protocol):
+    async def stop_hardware(
+        self, params: HardwareStopParams
+    ) -> SessionBackendResult[HardwareStopResponse]: ...
 
 
 @runtime_checkable

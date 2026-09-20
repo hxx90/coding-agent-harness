@@ -468,6 +468,20 @@ def test_falls_back_to_base_config_for_unknown_tool(tool_manager):
     assert config.permission == ToolPermission.ASK
 
 
+def test_robo_exposes_code_policy_instead_of_direct_motion_tools(tool_manager):
+    available = tool_manager.available_tools
+
+    assert "robo_run_policy" in available
+    assert "robo_execute" not in available
+    assert "robo_sequence" not in available
+    policy_spec = next(
+        spec
+        for spec in tool_manager.available_tool_specs()
+        if spec.name == "robo_run_policy"
+    )
+    assert "受限 Python" in policy_spec.description
+
+
 def test_partial_override_preserves_tool_defaults():
     vibe_config = build_test_vibe_config(
         tools={"read_file": {"sensitive_patterns": ["**/*.key"]}}

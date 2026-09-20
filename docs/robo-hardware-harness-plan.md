@@ -4,21 +4,36 @@
 
 本文记录对现有源码的扫描结果，以及将其改造成 Robo 硬件智能体 Harness 的推荐方案。硬件边界和安全约束已经确定，首个可运行切片已经实现并通过本地测试。
 
-## 当前实现状态（2026-09-17）
+## 当前实现状态（2026-09-19）
 
 已实现：
 
 - `vibe/core/hardware` 的设备 Manifest、Adapter Port、租约、显式武装/解除武装、执行、观察、停止和 JSONL Trace；
 - Mac 可运行的确定性机械臂 Adapter；
-- 受 Runtime 仲裁的 `robo_devices`、`robo_observe`、`robo_execute`、`robo_sequence`、`robo_verify`、`robo_stop`；
+- 受 Runtime 仲裁的 `robo_devices`、`robo_observe`、`robo_run_policy`、
+  `robo_verify`、`robo_stop`；模型必须以受限 Python 策略表达任务动作；
+- `HardwarePolicyRunner` 在运动前校验完整 AST，并执行有界变量、条件、循环、
+  Manifest 动作、观察和验证；策略失败、取消或超时时请求停止；
+- 策略源码、SHA-256、源码 URI 与逐步 observation/action/verification 轨迹进入
+  类型化结果，并由 App Server/Textual 硬件卡片展示；
 - MuJoCo 观察可生成会话内 RGB 证据帧，并将图片注入支持视觉的模型上下文；
+- MuJoCo 预览、RGB 证据与原生 MP4 录像共用一个离屏相机上下文，修复 macOS
+  双 GL context 和画面倒置问题；
+- Textual 已有统一的硬件 Effect 卡片，展示设备、遥测、故障、证据 URI、Trace、
+  回执和验证检查；默认 Legacy Harness 支持 `Ctrl+Shift+X` 全局停止；
+- `stop -> release -> reconnect` 生命周期可恢复，释放可幂等重试，重连后必须
+  获取新租约并重新武装；
 - 命令完成与任务完成已经拆分，任务结论只能来自显式后置条件验证；
 - stdio MCP 厂商 Adapter，且要求隐藏原始设备 Tool，防止模型绕过 Runtime；
 - CaP-X OpenAI-compatible Agent Bridge，支持文本、data URL 图片和多轮反馈；
 - 不执行任意 Python 的本地 CaP-X 风格“错误—观察—修复”烟雾测试。
 - 最多 200 条的模型可见 Trace，单个事件载荷上限 16 KiB；完整 JSONL 仍保存在模型上下文外。
 
-仍未完成：实体设备 Adapter、物理看门狗/急停、远程 HTTP 设备网关、完整 record/replay、专用硬件 UI，以及只能在 Linux/NVIDIA 上验收的官方 CaP-X 全量 Benchmark。运行方式和当前 Mac 探测结果见 [本地运行手册](robo-harness-local-runbook.md)。
+仍未完成：实体设备 Adapter、独立于进程的物理急停/看门狗、远程 HTTP 设备
+网关、完整 record/replay、常驻设备状态栏与故障恢复向导、Unified backend 的
+原生 HardwareRuntime，以及只能在 Linux/NVIDIA 上验收的官方 CaP-X 全量
+Benchmark。运行方式和当前 Mac 探测结果见
+[本地运行手册](robo-harness-local-runbook.md)。
 
 ## 一、核心决策
 
@@ -193,10 +208,10 @@ class HardwareRuntime(Protocol):
 
 - `robo_devices`：发现设备并读取能力；
 - `robo_observe`：读取观测或等待有界条件；
+- `robo_run_policy`：执行受限 Python 闭环策略；这是唯一模型可见的任务动作入口；
 - `robo_verify`：根据设备声明的后置条件验证任务结果并引用观察证据；
-- `robo_execute`：校验并执行一条类型化能力指令；
-- `robo_sequence`：执行有界且已校验的多步计划；
-- `robo_stop`：停止单台或全部设备，并始终可用。
+- `robo_stop`：停止单台设备，并始终可用；Textual 的 `Ctrl+Shift+X` 通过
+  App Server `hardware/stop` 停止当前会话的全部设备。
 
 所有工具只调用 `HardwareRuntime`，绝不直接打开硬件端口。Adapter 可以提供能力 Schema，但最终安全校验和执行权必须留在 Runtime。
 
@@ -204,12 +219,14 @@ class HardwareRuntime(Protocol):
 
 App Server 应持有规范化的 `HardwareResource`，提供设备列表/读取、连接/断开、武装/解除、租约、停止和诊断方法。增加设备快照、故障和遥测摘要通知，使 Textual、ACP 和未来 Web/移动客户端共享同一状态。
 
-新增一个统一的 `hardware` Effect 展示类型，用于渲染硬件指令卡片。未知的第三方能力继续走通用 Effect。只有当 UI 需要明确显示危险等级、目标设备、限制、运动预览、超时和停止行为时，才新增专用硬件审批结构。
+已经新增统一的 `hardware` Effect 展示类型，用于渲染设备、遥测、故障、证据、
+Trace、策略源码与逐步输出、回执和验证检查。未知的第三方能力继续走通用 Effect。危险等级、运动
+预览和专用硬件审批结构仍留待后续阶段。
 
 ### UI 能力
 
 - 常驻设备与安全状态栏；
-- 醒目的全局急停快捷键和命令；
+- 醒目的全局停止快捷键和命令（软件停止已实现，不能替代物理急停）；
 - 设备选择、连接和武装控制；
 - 实时但限频的遥测面板；
 - 显示目标、单位、限制、ACK 和最终状态的指令卡片；

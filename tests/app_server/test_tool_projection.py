@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import cast
 
 from pydantic import ValidationError
@@ -17,6 +18,8 @@ from vibe.app_server.models import (
     FileEditEffectOccurrence,
     FileEditEffectOutput,
     GenericEffectDetail,
+    HardwareEffectDetail,
+    HardwareEffectInput,
     ShellEffectDetail,
     ShellEffectInput,
     ShellEffectOutput,
@@ -24,6 +27,7 @@ from vibe.app_server.models import (
     SkillEffectInput,
     validate_history_entry,
 )
+from vibe.core.hardware import DeviceSnapshot, DeviceStatus, RunTrace
 from vibe.core.tools.builtins.bash import Bash, BashArgs, CapturedShellResult
 from vibe.core.tools.builtins.edit import Edit, EditResult
 from vibe.core.tools.builtins.experimental_bash import (
@@ -32,6 +36,15 @@ from vibe.core.tools.builtins.experimental_bash import (
 )
 from vibe.core.tools.builtins.git_bash import ExperimentalGitBash, GitBash, GitBashArgs
 from vibe.core.tools.builtins.grep import Grep, GrepResult
+from vibe.core.tools.builtins.robo import (
+    RoboExecute,
+    RoboExecuteArgs,
+    RoboObserve,
+    RoboObserveArgs,
+    RoboObserveResult,
+    RoboRunPolicy,
+    RoboRunPolicyArgs,
+)
 from vibe.core.tools.builtins.skill import Skill, SkillArgs
 from vibe.core.tools.builtins.windows_shell import (
     ExperimentalWindowsShell,
@@ -66,6 +79,144 @@ def test_semantic_effect_model_owns_its_projection() -> None:
     assert isinstance(detail, ShellEffectDetail)
     assert detail.tool_name == "bash"
     assert detail.input == ShellEffectInput(command="uv run pytest")
+
+
+def test_robo_observation_projects_as_a_hardware_effect() -> None:
+    event = ToolCallEvent(
+        tool_name="robo_observe",
+        tool_class=RoboObserve,
+        tool_call_id="hardware-1",
+        args=RoboObserveArgs(device_id="sim-arm-1", run_id="run-1"),
+    )
+    presentation = ToolUIDataAdapter(RoboObserve).get_call_presentation(event)
+
+    detail = project_effect_detail(event.tool_name, event.args, presentation)
+
+    assert presentation.kind is ToolEffectKind.HARDWARE
+    assert isinstance(detail, HardwareEffectDetail)
+    assert detail.input == HardwareEffectInput(
+        device_id="sim-arm-1", run_id="run-1", include_workspace=True
+    )
+
+
+def test_robo_execute_keeps_its_hardware_effect_projection() -> None:
+    event = ToolCallEvent(
+        tool_name="robo_execute",
+        tool_class=RoboExecute,
+        tool_call_id="hardware-2",
+        args=RoboExecuteArgs(
+            device_id="sim-arm-1",
+            lease_id="lease-1",
+            action="home",
+            command_id="command-1",
+            run_id="run-1",
+        ),
+    )
+    presentation = ToolUIDataAdapter(RoboExecute).get_call_presentation(event)
+
+    detail = project_effect_detail(event.tool_name, event.args, presentation)
+
+    assert isinstance(detail, HardwareEffectDetail)
+    assert detail.input == HardwareEffectInput(
+        action="home",
+        device_id="sim-arm-1",
+        lease_id="lease-1",
+        parameters={},
+        command_id="command-1",
+        run_id="run-1",
+    )
+
+
+def test_robo_code_policy_projects_source_as_a_hardware_effect() -> None:
+    event = ToolCallEvent(
+        tool_name="robo_run_policy",
+        tool_class=RoboRunPolicy,
+        tool_call_id="hardware-policy",
+        args=RoboRunPolicyArgs(
+            device_id="sim-arm-1",
+            lease_id="lease-1",
+            code='home()\nafter = observe()\nverify("at_home")',
+            run_id="run-1",
+        ),
+    )
+    presentation = ToolUIDataAdapter(RoboRunPolicy).get_call_presentation(event)
+
+    detail = project_effect_detail(event.tool_name, event.args, presentation)
+
+    assert isinstance(detail, HardwareEffectDetail)
+    assert detail.input == HardwareEffectInput(
+        device_id="sim-arm-1",
+        lease_id="lease-1",
+        code='home()\nafter = observe()\nverify("at_home")',
+        run_id="run-1",
+    )
+
+
+def test_robo_observation_projects_physical_state_and_trace() -> None:
+    result = RoboObserveResult(
+        snapshot=DeviceSnapshot(
+            device_id="sim-arm-1",
+            status=DeviceStatus.ARMED,
+            sequence=7,
+            observed_at=datetime.now(UTC),
+            state={"mode": "armed", "fault": "joint_limit"},
+        ),
+        trace=RunTrace(run_id="run-1", events=[]),
+    )
+    ui_data_class = ToolUIDataAdapter(RoboObserve).ui_data_class
+    assert ui_data_class is not None
+    projected = project_effect_output_value(
+        ToolEffectKind.HARDWARE, ui_data_class.project_result(result)
+    )
+
+    assert isinstance(projected, dict)
+    snapshot = projected["snapshot"]
+    assert isinstance(snapshot, dict)
+    state = snapshot["state"]
+    assert isinstance(state, dict)
+    assert snapshot["status"] == "armed"
+    assert state["fault"] == "joint_limit"
+    assert projected["trace"] == {"runId": "run-1", "events": []}
+
+
+def test_robo_policy_projects_typed_code_trace() -> None:
+    projected = project_effect_output_value(
+        ToolEffectKind.HARDWARE,
+        {
+            "policy": {
+                "policy_id": "policy-1",
+                "source": "before = observe()",
+                "source_sha256": "a" * 64,
+                "source_uri": "file:///tmp/policy-1.py",
+                "status": "completed",
+                "steps": [
+                    {
+                        "sequence": 1,
+                        "kind": "observation",
+                        "name": "observe",
+                        "line": 1,
+                        "output": {"state": {"mode": "armed"}},
+                    }
+                ],
+                "stdout": [],
+                "receipts": [],
+                "snapshot": {
+                    "device_id": "sim-arm-1",
+                    "status": "armed",
+                    "sequence": 1,
+                    "state": {"mode": "armed"},
+                },
+                "report": None,
+                "task_outcome": "not_verified",
+            }
+        },
+    )
+
+    assert isinstance(projected, dict)
+    policy = projected["policy"]
+    assert isinstance(policy, dict)
+    assert policy["sourceUri"] == "file:///tmp/policy-1.py"
+    assert policy["steps"][0]["kind"] == "observation"  # type: ignore[index]
 
 
 def test_git_bash_fallback_projects_as_shell_effect() -> None:

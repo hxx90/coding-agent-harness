@@ -23,6 +23,7 @@ from vibe.core.hardware.models import (
     DeviceLease,
     DeviceSnapshot,
     DeviceStatus,
+    GlobalStopReport,
     HardwareCommand,
     ObservationEvidence,
     RunEvent,
@@ -60,6 +61,12 @@ class _PendingVerification:
     requirements: dict[str, _VerificationRequirement]
 
 
+@dataclass(frozen=True, slots=True)
+class _ReleasedLease:
+    lease_id: str
+    release_recorded: bool
+
+
 class HardwareRuntime:
     def __init__(
         self,
@@ -67,26 +74,32 @@ class HardwareRuntime:
         adapters: list[DeviceAdapter],
         trace_dir: Path | None = None,
         trace_event_limit: int = 200,
+        global_stop_timeout_seconds: float = 10.0,
     ) -> None:
         if not 1 <= trace_event_limit <= MAX_TRACE_EVENTS:
             raise ValueError(
                 f"trace_event_limit must be between 1 and {MAX_TRACE_EVENTS}"
             )
+        if global_stop_timeout_seconds <= 0:
+            raise ValueError("global_stop_timeout_seconds must be greater than zero")
         self._adapters = {adapter.adapter_id: adapter for adapter in adapters}
         self._device_adapters: dict[str, DeviceAdapter] = {}
         self._manifests: dict[str, DeviceCapabilityManifest] = {}
         self._connected: set[str] = set()
         self._armed: set[str] = set()
         self._leases: dict[str, DeviceLease] = {}
+        self._released_leases: dict[str, _ReleasedLease] = {}
         self._traces: dict[str, deque[RunEvent]] = {}
         self._trace_sequences: dict[str, int] = {}
         self._trace_event_limit = trace_event_limit
+        self._global_stop_timeout_seconds = global_stop_timeout_seconds
         self._busy: set[str] = set()
         self._snapshot_sequences: dict[str, int] = {}
         self._verification_revision = 0
         self._pending_verifications: dict[str, _PendingVerification] = {}
         self._arming: dict[str, asyncio.Task[DeviceSnapshot]] = {}
         self._inflight: dict[str, asyncio.Task[CommandReceipt]] = {}
+        self._connecting: dict[str, asyncio.Task[object]] = {}
         self._lock = asyncio.Lock()
         self._discovery_lock = asyncio.Lock()
         self._trace_lock = asyncio.Lock()
@@ -121,16 +134,119 @@ class HardwareRuntime:
     async def connect(self, device_id: str, *, run_id: str) -> DeviceSnapshot:
         self._validate_run_id(run_id)
         adapter = await self._adapter_for(device_id)
+        async with self._lock:
+            if device_id in self._connecting:
+                raise HardwareRuntimeError(
+                    f"Device {device_id} is already connecting", code="device_busy"
+                )
+            if device_id in self._armed:
+                raise HardwareRuntimeError(
+                    f"Device {device_id} must be stopped before reconnecting",
+                    code="stop_required",
+                )
+            if device_id in self._busy:
+                raise HardwareRuntimeError(
+                    f"Device {device_id} is busy", code="device_busy"
+                )
+            if device_id in self._leases:
+                raise HardwareRuntimeError(
+                    f"Device {device_id} lease must be released before reconnecting",
+                    code="lease_conflict",
+                )
+            reconnecting = device_id in self._connected
+            self._busy.add(device_id)
+            connecting_task = asyncio.current_task()
+            if connecting_task is None:
+                self._busy.discard(device_id)
+                raise HardwareRuntimeError(
+                    "Device connection requires an active task", code="runtime_error"
+                )
+            self._connecting[device_id] = connecting_task
+        try:
+            try:
+                snapshot = await self._open_adapter_connection(
+                    adapter, device_id=device_id, reconnecting=reconnecting
+                )
+            except BaseException:
+                await self._clear_failed_connection(
+                    device_id, reconnecting=reconnecting
+                )
+                raise
+            reservation_active = await self._activate_connection(
+                device_id, snapshot, connecting_task=connecting_task
+            )
+            if not reservation_active:
+                await self._confirm_interrupted_connection_stopped(adapter, device_id)
+                raise HardwareRuntimeError(
+                    f"Device {device_id} stopped while it was connecting",
+                    code="stopped_before_start",
+                )
+            await self._record(
+                run_id,
+                "device_reconnected" if reconnecting else "device_connected",
+                device_id=device_id,
+            )
+            return snapshot
+        finally:
+            async with self._lock:
+                if self._connecting.get(device_id) is connecting_task:
+                    self._connecting.pop(device_id)
+
+    async def _open_adapter_connection(
+        self, adapter: DeviceAdapter, *, device_id: str, reconnecting: bool
+    ) -> DeviceSnapshot:
+        if reconnecting:
+            await self._call_adapter("disconnect", adapter.disconnect(device_id))
         snapshot = await self._call_adapter("connect", adapter.connect(device_id))
         self._require_device_id(
             expected=device_id, actual=snapshot.device_id, operation="connect"
         )
-        async with self._lock:
-            self._connected.add(device_id)
-            self._armed.discard(device_id)
-            self._snapshot_sequences[device_id] = snapshot.sequence
-        await self._record(run_id, "device_connected", device_id=device_id)
         return snapshot
+
+    async def _clear_failed_connection(
+        self, device_id: str, *, reconnecting: bool
+    ) -> None:
+        async with self._lock:
+            self._busy.discard(device_id)
+            if reconnecting:
+                self._connected.discard(device_id)
+                self._released_leases.pop(device_id, None)
+                self._snapshot_sequences.pop(device_id, None)
+
+    async def _activate_connection(
+        self,
+        device_id: str,
+        snapshot: DeviceSnapshot,
+        *,
+        connecting_task: asyncio.Task[object],
+    ) -> bool:
+        async with self._lock:
+            reservation_active = (
+                device_id in self._busy
+                and self._connecting.get(device_id) is connecting_task
+            )
+            self._busy.discard(device_id)
+            if reservation_active:
+                self._connected.add(device_id)
+                self._armed.discard(device_id)
+                self._released_leases.pop(device_id, None)
+                self._snapshot_sequences[device_id] = snapshot.sequence
+            return reservation_active
+
+    async def _confirm_interrupted_connection_stopped(
+        self, adapter: DeviceAdapter, device_id: str
+    ) -> None:
+        receipt = await self._call_adapter(
+            "stop", adapter.stop(device_id, "connect interrupted by stop")
+        )
+        await self._require_stop_receipt_device_id(device_id, receipt)
+        if receipt.acknowledged:
+            return
+        await self._invalidate_device(device_id)
+        raise HardwareRuntimeError(
+            f"Device {device_id} did not confirm stop after connecting",
+            code="stop_unconfirmed",
+        )
 
     async def arm(
         self, device_id: str, *, lease_id: str, run_id: str
@@ -261,6 +377,7 @@ class HardwareRuntime:
                 expires_at=now + timedelta(seconds=ttl_seconds),
             )
             self._leases[device_id] = lease
+            self._released_leases.pop(device_id, None)
         await self._record(
             run_id,
             "lease_acquired",
@@ -273,18 +390,33 @@ class HardwareRuntime:
         self, device_id: str, *, lease_id: str, run_id: str
     ) -> None:
         self._validate_run_id(run_id)
+        record_release = False
         async with self._lock:
             lease = self._leases.get(device_id)
-            if lease is None or lease.lease_id != lease_id:
+            released = self._released_leases.get(device_id)
+            if lease is None and released is not None and released.lease_id == lease_id:
+                record_release = not released.release_recorded
+                if record_release:
+                    self._released_leases[device_id] = _ReleasedLease(
+                        lease_id=lease_id, release_recorded=True
+                    )
+            elif lease is None or lease.lease_id != lease_id:
                 raise HardwareRuntimeError(
                     f"No matching active lease for {device_id}", code="lease_required"
                 )
-            if device_id in self._armed:
+            elif device_id in self._armed:
                 raise HardwareRuntimeError(
                     f"Device {device_id} must be disarmed before releasing its lease",
                     code="disarm_required",
                 )
-            self._leases.pop(device_id)
+            else:
+                self._leases.pop(device_id)
+                self._released_leases[device_id] = _ReleasedLease(
+                    lease_id=lease_id, release_recorded=True
+                )
+                record_release = True
+        if not record_release:
+            return
         await self._record(
             run_id,
             "lease_released",
@@ -651,6 +783,8 @@ class HardwareRuntime:
         await self._record(
             run_id, "stop_requested", device_id=device_id, payload={"reason": reason}
         )
+        async with self._lock:
+            connecting_task = self._connecting.get(device_id)
         receipt = await self._call_adapter("stop", adapter.stop(device_id, reason))
         await self._require_stop_receipt_device_id(device_id, receipt)
         if receipt.acknowledged:
@@ -658,7 +792,11 @@ class HardwareRuntime:
                 command_task = self._inflight.pop(device_id, None)
                 arm_task = self._arming.pop(device_id, None)
                 self._busy.discard(device_id)
-                self._leases.pop(device_id, None)
+                lease = self._leases.pop(device_id, None)
+                if lease is not None:
+                    self._released_leases[device_id] = _ReleasedLease(
+                        lease_id=lease.lease_id, release_recorded=False
+                    )
                 self._armed.discard(device_id)
             tasks = [task for task in (command_task, arm_task) if task is not None]
             for task in tasks:
@@ -674,6 +812,11 @@ class HardwareRuntime:
                 await self._require_stop_receipt_device_id(device_id, receipt)
                 if not receipt.acknowledged:
                     await self._invalidate_device(device_id)
+            if (
+                connecting_task is not None
+                and connecting_task is not asyncio.current_task()
+            ):
+                await self._wait_for_interrupted_connection(device_id, connecting_task)
             kind = "stop_acknowledged" if receipt.acknowledged else "stop_unconfirmed"
         else:
             kind = "stop_unconfirmed"
@@ -682,24 +825,95 @@ class HardwareRuntime:
         )
         return receipt
 
+    async def stop_all(self, *, reason: str, run_id: str) -> GlobalStopReport:
+        self._validate_run_id(run_id)
+        async with self._lock:
+            # A first connection is reserved in ``_busy`` before it becomes
+            # visible in ``_connected``. Include it so an operator stop cannot
+            # miss hardware in that transition window; ``connect`` observes the
+            # cleared reservation and confirms stop again after it unwinds.
+            # Keep ``_connecting`` as an independent target because a timed-out
+            # stop invalidates ``_busy`` while the adapter call may still run.
+            device_ids = sorted(self._connected | self._busy | self._connecting.keys())
+        receipts: list[StopReceipt] = []
+        failures: dict[str, str] = {}
+        tasks = {
+            device_id: asyncio.create_task(
+                self._stop_with_timeout(device_id, reason=reason, run_id=run_id)
+            )
+            for device_id in device_ids
+        }
+        for device_id, task in tasks.items():
+            try:
+                receipts.append(await task)
+            except Exception as exc:
+                failures[device_id] = str(exc)
+        return GlobalStopReport(receipts=receipts, failures=failures)
+
+    async def _wait_for_interrupted_connection(
+        self, device_id: str, connecting_task: asyncio.Task[object]
+    ) -> None:
+        try:
+            await asyncio.shield(connecting_task)
+        except asyncio.CancelledError as exc:
+            current = asyncio.current_task()
+            if current is not None and current.cancelling():
+                raise
+            await self._invalidate_device(device_id)
+            raise HardwareRuntimeError(
+                f"Device {device_id} connection ended before stop confirmation",
+                code="stop_unconfirmed",
+            ) from exc
+        except HardwareRuntimeError as exc:
+            if exc.code == "stopped_before_start":
+                return
+            await self._invalidate_device(device_id)
+            raise HardwareRuntimeError(
+                f"Device {device_id} could not confirm stop after connecting",
+                code="stop_unconfirmed",
+            ) from exc
+        await self._invalidate_device(device_id)
+        raise HardwareRuntimeError(
+            f"Device {device_id} connected after a stop request",
+            code="stop_unconfirmed",
+        )
+
+    async def _stop_with_timeout(
+        self, device_id: str, *, reason: str, run_id: str
+    ) -> StopReceipt:
+        try:
+            async with asyncio.timeout(self._global_stop_timeout_seconds):
+                return await self.stop(device_id, reason=reason, run_id=run_id)
+        except TimeoutError as exc:
+            await self._invalidate_device(device_id)
+            raise HardwareRuntimeError(
+                f"Timed out stopping device {device_id}", code="stop_timeout"
+            ) from exc
+
     def read_trace(self, run_id: str) -> RunTrace:
         self._validate_run_id(run_id)
         return RunTrace(run_id=run_id, events=list(self._traces.get(run_id, ())))
 
     async def aclose(self) -> None:
-        connected = list(self._connected)
-        inflight = [*self._inflight.values(), *self._arming.values()]
-        arming_devices = set(self._arming)
-        for device_id in connected:
+        async with self._lock:
+            connected = set(self._connected)
+            connecting = dict(self._connecting)
+            inflight = [*self._inflight.values(), *self._arming.values()]
+            arming_devices = set(self._arming)
+            # Prevent a connection that finishes during shutdown from becoming
+            # active after the first stop request.
+            self._busy.difference_update(connecting)
+        for device_id in sorted(connected | connecting.keys()):
             adapter = self._device_adapters.get(device_id)
             if adapter is None:
                 continue
             with contextlib.suppress(Exception):
                 await adapter.stop(device_id, "hardware runtime closing")
-        for task in inflight:
+        active_tasks = [*inflight, *connecting.values()]
+        for task in active_tasks:
             if not task.done():
                 task.cancel()
-        for task in inflight:
+        for task in active_tasks:
             with contextlib.suppress(BaseException):
                 await task
         for device_id in arming_devices:
@@ -708,7 +922,7 @@ class HardwareRuntime:
                 continue
             with contextlib.suppress(Exception):
                 await adapter.stop(device_id, "post-arm runtime close confirmation")
-        for device_id in connected:
+        for device_id in sorted(connected):
             adapter = self._device_adapters.get(device_id)
             if adapter is None:
                 continue
@@ -719,10 +933,12 @@ class HardwareRuntime:
                 await adapter.aclose()
         self._connected.clear()
         self._leases.clear()
+        self._released_leases.clear()
         self._armed.clear()
         self._busy.clear()
         self._arming.clear()
         self._inflight.clear()
+        self._connecting.clear()
 
     async def _adapter_for(self, device_id: str) -> DeviceAdapter:
         if adapter := self._device_adapters.get(device_id):
@@ -805,6 +1021,7 @@ class HardwareRuntime:
             ]
             self._connected.discard(device_id)
             self._leases.pop(device_id, None)
+            self._released_leases.pop(device_id, None)
             self._armed.discard(device_id)
             self._busy.discard(device_id)
         for task in tasks:

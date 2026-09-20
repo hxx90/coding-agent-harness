@@ -1104,8 +1104,9 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
                     f"<{VIBE_WARNING_TAG}>Physical actions on {len(devices)} device(s) "
                     "completed, but their task outcome is still not_verified. "
                     "Before ending this turn, observe the resulting physical state "
-                    "and call a device-declared robo_verify criterion. Only a passed "
-                    "report permits a success claim; failed or inconclusive reports "
+                    "and run a device-declared verification inside robo_run_policy "
+                    "(or call robo_verify for diagnosis). Only a passed report permits "
+                    "a success claim; failed or inconclusive reports "
                     f"must be stated explicitly.</{VIBE_WARNING_TAG}>"
                 ),
                 injected=True,

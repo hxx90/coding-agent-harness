@@ -111,6 +111,7 @@ _TOOL_KINDS: dict[ToolEffectKind, ToolKind] = {
     ToolEffectKind.SUBAGENT: "think",
     ToolEffectKind.WORKTREE: "other",
     ToolEffectKind.PROCESS: "execute",
+    ToolEffectKind.HARDWARE: "execute",
 }
 
 

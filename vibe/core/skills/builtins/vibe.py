@@ -381,9 +381,11 @@ default_agent = "plan"
 
 ### Robo Hardware Harness
 
-Robo exposes six built-in hardware tools: `robo_devices`, `robo_observe`,
-`robo_execute`, `robo_sequence`, `robo_verify`, and `robo_stop`. All motion goes through the
-session-owned `HardwareRuntime`; do not call a vendor motion tool directly.
+Robo exposes five model-facing hardware tools: `robo_devices`, `robo_observe`,
+`robo_run_policy`, `robo_verify`, and `robo_stop`. All task-changing motion must be
+expressed as one bounded Python policy passed to `robo_run_policy`; the compatibility
+implementations for single commands and sequences are hidden from the model. All motion
+goes through the session-owned `HardwareRuntime`; do not call a vendor motion tool directly.
 The built-in `sim-arm-1` device is deterministic and is intended for local
 contract testing, not physics or safety validation. Motion requires an active
 device lease followed by explicit arming. Arming requires approval even when
@@ -391,19 +393,42 @@ the other `robo_devices` operations are allowed. `robo_stop` remains callable
 without a lease and only reports success when the Adapter returns an
 acknowledgement.
 
-An executed command is not proof that a physical task succeeded. After every
-task-changing action, call `robo_observe`; use its structured state and visual
-evidence together. Before claiming task completion, call `robo_verify` with a
-verification criterion declared by the device Manifest. Only `passed` permits a
-success claim. On `failed`, continue or recover; on `inconclusive`, capture more
-evidence or ask the operator. The Runtime requires a criterion associated with
-the completed action, matching parameters, and a newer observation timestamp
-and snapshot sequence. Simulator rewards are never exposed to the agent.
+A policy should close the loop in code: call `observe()`, invoke Manifest action
+functions, call `observe()` again, and finish with `verify()`. An executed command is
+not proof that a physical task succeeded; only `policy.task_outcome == "passed"`
+permits a success claim. On `failed`, generate a corrected policy; on `inconclusive`,
+capture more evidence or ask the operator. The Runtime requires a criterion associated
+with the completed action, matching parameters, and a newer observation timestamp and
+snapshot sequence. Simulator rewards are never exposed to the agent. Policy source and
+its observation/action/verification trace are stored under `hardware-runs/policies/`.
 
 `robo-capx-bridge` serves Robo at `/chat/completions` for CaP-X and
 `robo-capx-smoke` runs a small local multi-turn repair case. CaP-X request traces
 default to `.vibe/capx-runs/`; hardware traces live under the session's
 `hardware-runs/` directory. Full CaP-X simulation requires a Linux/NVIDIA host.
+
+The Textual hardware card shows device state, telemetry, faults, evidence URIs,
+recent trace events, command receipts, and verification checks. In the default
+Legacy Harness, `Ctrl+Shift+X` first requests an acknowledged stop from every
+connected or connecting device, then interrupts the current agent turn. This is
+a software stop and never replaces a physical emergency stop or watchdog. The
+Unified backend currently returns `NOT_IMPLEMENTED` because it does not own the
+Python `HardwareRuntime`.
+
+After a stop, release the original lease before reconnecting. Lease release is
+idempotent. Reconnect disconnects the old adapter connection first, and the
+recovered device needs a fresh lease and explicit re-arming.
+
+The MuJoCo adapter uses one offscreen camera context for upright RGB evidence and
+native MP4 recording. A configured Robo MCP adapter
+stores recordings under `hardware-runs/recordings/<server>/` and evidence under
+`hardware-runs/evidence/<server>/`; `robo_observe` exposes the completed video as
+`snapshot.state.recording_uri`. The MCP process owns simulation state and publishes
+joint and mocap state over a local mmap buffer to an independent, display-only native
+MuJoCo Viewer process. Its resizable window supports mouse orbit, pan, and scroll zoom.
+Closing or crashing the Viewer does not stop hardware control; disconnecting the device
+or exiting Robo reclaims the Viewer automatically. A standalone `robo-sim-mcp` accepts
+`ROBO_RECORDING_DIR` and `ROBO_EVIDENCE_DIR`.
 
 Local stdio hardware adapters use an MCP server name beginning with `robo-` and
 must hide all nine raw `robo_devices`, `robo_connect`, `robo_arm`,

@@ -65,6 +65,9 @@ from vibe.app_server.protocol import (
     ContextInjectResponse,
     EmptyResponse,
     EventNotificationParams,
+    HardwareStopParams,
+    HardwareStopReceipt,
+    HardwareStopResponse,
     MCPAuthRequiredParams,
     Notification,
     ProtocolErrorCode,
@@ -789,6 +792,31 @@ class LegacySessionBackend:
         self, params: TurnInterruptParams
     ) -> SessionBackendResult[TurnInterruptResponse]:
         return await self._request("turn/interrupt", params, TurnInterruptResponse)
+
+    async def stop_hardware(
+        self, params: HardwareStopParams
+    ) -> SessionBackendResult[HardwareStopResponse]:
+        if params.session_id != self.session_id:
+            raise SessionBackendError(
+                ProtocolErrorCode.NOT_FOUND, "Hardware session not found"
+            )
+        report = await self.session.agent_loop.hardware_runtime.stop_all(
+            reason=params.reason, run_id=self.session_id
+        )
+        return SessionBackendResult(
+            response=HardwareStopResponse(
+                receipts=[
+                    HardwareStopReceipt(
+                        device_id=receipt.device_id,
+                        acknowledged=receipt.acknowledged,
+                        message=receipt.message,
+                    )
+                    for receipt in report.receipts
+                ],
+                failures=report.failures,
+                all_acknowledged=report.all_acknowledged,
+            )
+        )
 
     async def inject_context(
         self, params: ContextInjectParams

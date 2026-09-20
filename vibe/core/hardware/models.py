@@ -48,6 +48,25 @@ class VerificationStatus(StrEnum):
     INCONCLUSIVE = auto()
 
 
+class PolicyRunStatus(StrEnum):
+    COMPLETED = auto()
+
+
+class PolicyStepKind(StrEnum):
+    OBSERVATION = auto()
+    ACTION = auto()
+    VERIFICATION = auto()
+    STOP = auto()
+    OUTPUT = auto()
+
+
+class PolicyTaskOutcome(StrEnum):
+    NOT_VERIFIED = auto()
+    PASSED = auto()
+    FAILED = auto()
+    INCONCLUSIVE = auto()
+
+
 class ObservationModality(StrEnum):
     RGB = auto()
     DEPTH = auto()
@@ -224,6 +243,45 @@ class StopReceipt(BaseModel):
     acknowledged: bool
     observed_at: datetime
     message: str
+
+
+class GlobalStopReport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    receipts: list[StopReceipt] = Field(default_factory=list)
+    failures: dict[str, str] = Field(default_factory=dict)
+
+    @property
+    def all_acknowledged(self) -> bool:
+        return not self.failures and all(
+            receipt.acknowledged for receipt in self.receipts
+        )
+
+
+class HardwarePolicyStep(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sequence: int = Field(ge=1)
+    kind: PolicyStepKind
+    name: str = Field(min_length=1, max_length=128)
+    line: int = Field(ge=1)
+    output: JsonValue = None
+
+
+class HardwarePolicyResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    policy_id: str = Field(min_length=1, max_length=128)
+    source: str = Field(max_length=32 * 1024)
+    source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_uri: str = Field(min_length=1, max_length=4096)
+    status: PolicyRunStatus = PolicyRunStatus.COMPLETED
+    steps: list[HardwarePolicyStep] = Field(default_factory=list, max_length=200)
+    stdout: list[str] = Field(default_factory=list, max_length=100)
+    receipts: list[CommandReceipt] = Field(default_factory=list, max_length=50)
+    snapshot: DeviceSnapshot
+    report: VerificationReport | None = None
+    task_outcome: PolicyTaskOutcome = PolicyTaskOutcome.NOT_VERIFIED
 
 
 class RunEvent(BaseModel):

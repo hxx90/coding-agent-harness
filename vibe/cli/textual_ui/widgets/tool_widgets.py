@@ -26,6 +26,16 @@ from vibe.app_server.models import (
     FileSearchEffectOutput as FileSearchOutput,
     FileWriteEffectInput as FileWriteInput,
     FileWriteEffectOutput as FileWriteOutput,
+    HardwareCommandReceiptOutput,
+    HardwareDeviceOutput,
+    HardwareEffectOutput as HardwareOutput,
+    HardwareEvidenceOutput,
+    HardwarePolicyOutput,
+    HardwareSnapshotOutput,
+    HardwareStopReceiptOutput,
+    HardwareTraceOutput,
+    HardwareVerificationOutput,
+    HardwareWorkspaceOutput,
     ShellEffectInput as ShellInput,
     ShellEffectOutput as ShellOutput,
     TodoEffectInput as TodoInput,
@@ -679,6 +689,141 @@ class WebFetchResultWidget(ToolResultWidget[WebFetchOutput]):
         yield from self._footer()
 
 
+class HardwareResultWidget(ToolResultWidget[HardwareOutput]):
+    COLLAPSIBLE = False
+
+    def compose(self) -> ComposeResult:
+        yield from self._yield_advisories()
+        if not self.result:
+            yield from self._footer()
+            return
+        lines: list[str] = []
+        self._append_devices(lines, self.result.devices)
+        self._append_snapshot(lines, self.result.snapshot)
+        self._append_report(lines, self.result.report)
+        self._append_policy(lines, self.result.policy)
+        self._append_receipt(lines, self.result.receipt)
+        for receipt in self.result.receipts or []:
+            self._append_receipt(lines, receipt)
+        self._append_trace(lines, self.result.trace)
+        self._append_workspace(lines, self.result.workspace)
+        if self.result.lease:
+            lines.append(
+                f"lease: {self.result.lease.lease_id} until "
+                f"{self.result.lease.expires_at.isoformat()}"
+            )
+        if self.result.released:
+            lines.append("lease: released")
+        if self.result.task_outcome:
+            lines.append(f"task: {self.result.task_outcome}")
+        if lines:
+            yield from self._yield_text("\n".join(lines))
+        yield from self._footer()
+
+    @staticmethod
+    def _append_devices(
+        lines: list[str], devices: list[HardwareDeviceOutput] | None
+    ) -> None:
+        for device in devices or []:
+            lines.append(
+                f"device: {device.device_id} · {device.manufacturer} {device.model} · "
+                f"{device.kind}/{device.transport}"
+            )
+
+    @staticmethod
+    def _append_snapshot(
+        lines: list[str], snapshot: HardwareSnapshotOutput | None
+    ) -> None:
+        if not snapshot:
+            return
+        lines.append(
+            "observation: "
+            f"{snapshot.device_id} · {snapshot.status} · sequence {snapshot.sequence}"
+        )
+        lines.extend(
+            f"  {name}: {_format_generic_value(value)}"
+            for name, value in snapshot.state.items()
+            if value is not None
+        )
+        if snapshot.faults:
+            lines.append("  faults: " + ", ".join(snapshot.faults))
+        HardwareResultWidget._append_evidence(lines, snapshot.evidence)
+
+    @staticmethod
+    def _append_evidence(
+        lines: list[str], evidence: list[HardwareEvidenceOutput]
+    ) -> None:
+        lines.extend(f"  evidence: {item.source_id} · {item.uri}" for item in evidence)
+
+    @staticmethod
+    def _append_report(
+        lines: list[str], report: HardwareVerificationOutput | None
+    ) -> None:
+        if not report:
+            return
+        lines.append(f"verification: {report.criterion} · {report.status}")
+        lines.append(f"  {report.summary}")
+        lines.extend(
+            "  check: "
+            f"{check.name} · {check.status} · "
+            f"observed={_format_generic_value(check.observed)} · "
+            f"expected={check.expected}"
+            for check in report.checks
+        )
+        HardwareResultWidget._append_evidence(lines, report.evidence)
+
+    @staticmethod
+    def _append_receipt(
+        lines: list[str],
+        receipt: HardwareCommandReceiptOutput | HardwareStopReceiptOutput | None,
+    ) -> None:
+        if not receipt:
+            return
+        if isinstance(receipt, HardwareStopReceiptOutput):
+            status = "acknowledged" if receipt.acknowledged else "unconfirmed"
+            message = receipt.message
+        else:
+            status = receipt.status
+            message = receipt.error or receipt.command_id
+        lines.append(f"command: {status} · {message}".rstrip(" ·"))
+
+    @staticmethod
+    def _append_trace(lines: list[str], trace: HardwareTraceOutput | None) -> None:
+        if not trace or not trace.events:
+            return
+        lines.append(f"telemetry: {trace.run_id}")
+        for event in trace.events[-8:]:
+            target = event.device_id or "runtime"
+            lines.append(f"  #{event.sequence} {event.kind} · {target}")
+
+    @staticmethod
+    def _append_workspace(
+        lines: list[str], workspace: HardwareWorkspaceOutput | None
+    ) -> None:
+        if not workspace:
+            return
+        dirty = "dirty" if workspace.dirty else "clean"
+        lines.append(f"workspace: {workspace.git_branch or 'no branch'} · {dirty}")
+
+    @staticmethod
+    def _append_policy(lines: list[str], policy: HardwarePolicyOutput | None) -> None:
+        if not policy:
+            return
+        lines.append(
+            f"policy: {policy.status} · outcome {policy.task_outcome} · "
+            f"{policy.source_uri}"
+        )
+        lines.append("  code:")
+        lines.extend(f"    {line}" for line in policy.source.splitlines())
+        for step in policy.steps:
+            lines.append(
+                f"  #{step.sequence} line {step.line} · {step.kind} · {step.name}"
+            )
+            if step.output is not None:
+                lines.append(f"    output: {_format_generic_value(step.output)}")
+        lines.extend(f"  stdout: {line}" for line in policy.stdout)
+
+
 @dataclass(frozen=True, slots=True)
 class EffectWidgets:
     approval: type[ToolApprovalWidget] = ToolApprovalWidget
@@ -725,6 +870,9 @@ EFFECT_WIDGETS: dict[ToolEffectKind, EffectWidgets] = {
     ),
     ToolEffectKind.PROCESS: EffectWidgets(
         output_model=ProcessToolOutput, result=ProcessResultWidget
+    ),
+    ToolEffectKind.HARDWARE: EffectWidgets(
+        output_model=HardwareOutput, result=HardwareResultWidget
     ),
 }
 

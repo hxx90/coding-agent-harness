@@ -74,7 +74,9 @@ def create_server(adapter: RobosuiteSimulatorAdapter) -> FastMCP:
 
 def run_server(settings: SimulatorSettings) -> None:
     adapter = RobosuiteSimulatorAdapter(
-        show_viewer=not settings.headless, evidence_dir=settings.evidence_dir
+        show_viewer=not settings.headless,
+        evidence_dir=settings.evidence_dir,
+        recording_dir=settings.recording_dir,
     )
     try:
         create_server(adapter).run(transport="stdio")

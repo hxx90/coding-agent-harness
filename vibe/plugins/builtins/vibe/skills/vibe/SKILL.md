@@ -454,15 +454,46 @@ HTTP MCP servers can use either static auth or OAuth:
 - For SSH/remote browser callbacks, forward the loopback port:
   `ssh -L 47823:127.0.0.1:47823 <host>`.
 
-### Robo MuJoCo simulator
+### Robo code policies and MuJoCo simulator
+
+Use `robo_run_policy` for every task-changing hardware operation. Generate one bounded
+Python policy that calls `observe()`, Manifest action functions, `observe()` again, and
+`verify()`. The model-facing single-command and sequence tools are disabled. A command
+receipt is not task success; only `policy.task_outcome == "passed"` permits a success
+claim. Policy source and ordered observation/action/verification outputs are stored under
+`hardware-runs/policies/` and shown in the hardware card. On a policy error, observe the
+current physical state before generating corrected code; never assume regeneration rolls
+back earlier motion.
 
 The optional visual simulator exposes a Franka Panda as a local hardware MCP
 adapter. Install it with `uv sync --extra simulator`, then configure the bundled
 `robo-sim-mcp` stdio server with a name beginning with `robo-`. All nine raw
 `robo_*` MCP tools, including `robo_verify`, must be listed in `disabled_tools`; the HardwareRuntime calls
 them internally so the model cannot bypass leases, arming, approvals, traces, or
-stop acknowledgement. Connecting `mujoco-panda-1` opens the MuJoCo viewer. On
-macOS, the entry point automatically restarts under `mjpython`.
+stop acknowledgement. Connecting `mujoco-panda-1` launches an independent,
+display-only native MuJoCo Viewer process. The MCP process remains the sole simulation
+owner and publishes joint and mocap state over a local mmap buffer to a read-only model
+mirror. The resizable Viewer supports mouse orbit, pan, and scroll zoom. Closing or
+crashing it does not stop hardware control, and disconnecting the device reclaims it
+automatically.
+
+Upright RGB evidence and native MP4 recording share one offscreen camera context;
+the native Viewer renders its state mirror independently. Configured Robo MCP adapters save recordings under
+`hardware-runs/recordings/<server>/` and evidence under
+`hardware-runs/evidence/<server>/`; `robo_observe` exposes the completed video as
+`snapshot.state.recording_uri`. A standalone server accepts
+`ROBO_RECORDING_DIR` and `ROBO_EVIDENCE_DIR`.
+
+Textual hardware cards show device state, telemetry, faults, evidence URIs,
+recent trace events, command receipts, and verification checks. In the default
+Legacy Harness, `Ctrl+Shift+X` first requests an acknowledged stop from all
+connected or connecting devices and then interrupts the current agent turn.
+This software stop never replaces a physical emergency stop or watchdog. The
+Unified backend currently reports `NOT_IMPLEMENTED` for this operation.
+
+After stopping, release the original lease before reconnecting. Release is
+idempotent; reconnect disconnects the old adapter connection first, and the
+recovered device must acquire a fresh lease and be explicitly armed again.
 
 Verification capabilities should declare `applicable_actions`. A verification
 only discharges a pending physical action when its criterion and parameters

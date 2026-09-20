@@ -25,6 +25,9 @@ from vibe.app_server.models import (
     FileWriteEffectInput,
     FileWriteEffectOutput,
     GenericEffectDetail,
+    HardwareEffectDetail,
+    HardwareEffectInput,
+    HardwareEffectOutput,
     PublicError,
     ShellEffectDetail,
     ShellEffectInput,
@@ -94,6 +97,9 @@ _EFFECT_PROJECTIONS = {
     ),
     ToolEffectKind.SUBAGENT: _EffectProjection(
         SubagentEffectDetail, SubagentEffectInput, SubagentEffectOutput
+    ),
+    ToolEffectKind.HARDWARE: _EffectProjection(
+        HardwareEffectDetail, HardwareEffectInput, HardwareEffectOutput
     ),
 }
 

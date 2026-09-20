@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum, auto
 from typing import Annotated, ClassVar, Literal, Self, cast
 
@@ -210,6 +211,186 @@ class WorktreeEffectInput(ProtocolModel):
     path: str
 
 
+class HardwareActionInput(ProtocolModel):
+    action: str
+    parameters: dict[str, JsonValue] = Field(default_factory=dict)
+    command_id: str | None = None
+
+
+class HardwareEffectInput(ProtocolModel):
+    action: str | None = None
+    device_id: str | None = None
+    lease_id: str | None = None
+    command_id: str | None = None
+    owner: str | None = None
+    ttl_seconds: float | None = None
+    parameters: dict[str, JsonValue] | None = None
+    actions: list[HardwareActionInput] | None = None
+    criterion: str | None = None
+    reason: str | None = None
+    run_id: str | None = None
+    include_workspace: bool | None = None
+    code: str | None = None
+
+
+class HardwareActionCapabilityOutput(ProtocolModel):
+    name: str
+    description: str
+    parameters_schema: dict[str, JsonValue] = Field(default_factory=dict)
+    destructive: bool = True
+
+
+class HardwareVerificationCapabilityOutput(ProtocolModel):
+    name: str
+    description: str
+    parameters_schema: dict[str, JsonValue] = Field(default_factory=dict)
+    applicable_actions: list[str] = Field(default_factory=list)
+    parameter_bindings: dict[str, str] = Field(default_factory=dict)
+
+
+class HardwareDeviceOutput(ProtocolModel):
+    schema_version: str = "1.0"
+    device_id: str
+    adapter_id: str | None = None
+    manufacturer: str
+    model: str
+    kind: str
+    transport: str
+    actions: list[HardwareActionCapabilityOutput] = Field(default_factory=list)
+    verifications: list[HardwareVerificationCapabilityOutput] = Field(
+        default_factory=list
+    )
+    metadata: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+class HardwareEvidenceOutput(ProtocolModel):
+    evidence_id: str | None = None
+    source_id: str
+    modality: str | None = None
+    captured_at: datetime | None = None
+    sequence: int | None = None
+    mime_type: str | None = None
+    uri: str
+    width: int | None = None
+    height: int | None = None
+
+
+class HardwareSnapshotOutput(ProtocolModel):
+    device_id: str
+    status: str
+    sequence: int
+    observed_at: datetime | None = None
+    state: dict[str, JsonValue] = Field(default_factory=dict)
+    faults: list[str] = Field(default_factory=list)
+    evidence: list[HardwareEvidenceOutput] = Field(default_factory=list)
+
+
+class HardwareLeaseOutput(ProtocolModel):
+    lease_id: str
+    device_id: str | None = None
+    owner: str | None = None
+    acquired_at: datetime | None = None
+    expires_at: datetime
+
+
+class HardwareCommandReceiptOutput(ProtocolModel):
+    command_id: str
+    device_id: str
+    status: str
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    result: dict[str, JsonValue] = Field(default_factory=dict)
+    error: str | None = None
+
+
+class HardwareStopReceiptOutput(ProtocolModel):
+    device_id: str
+    acknowledged: bool
+    observed_at: datetime | None = None
+    message: str
+
+
+class HardwareTraceEventOutput(ProtocolModel):
+    sequence: int
+    run_id: str | None = None
+    kind: str
+    occurred_at: datetime | None = None
+    device_id: str | None = None
+    command_id: str | None = None
+    payload: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+class HardwareTraceOutput(ProtocolModel):
+    run_id: str
+    events: list[HardwareTraceEventOutput] = Field(default_factory=list)
+
+
+class HardwareWorkspaceOutput(ProtocolModel):
+    cwd: str | None = None
+    git_commit: str | None = None
+    git_branch: str | None = None
+    dirty: bool = False
+    changed_files: list[str] = Field(default_factory=list)
+
+
+class HardwareVerificationCheckOutput(ProtocolModel):
+    name: str
+    status: str
+    observed: JsonValue = None
+    expected: str
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
+class HardwareVerificationOutput(ProtocolModel):
+    verification_id: str | None = None
+    device_id: str | None = None
+    criterion: str
+    status: str
+    observed_at: datetime | None = None
+    snapshot_sequence: int | None = None
+    checks: list[HardwareVerificationCheckOutput] = Field(default_factory=list)
+    summary: str
+    evidence: list[HardwareEvidenceOutput] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
+class HardwarePolicyStepOutput(ProtocolModel):
+    sequence: int
+    kind: str
+    name: str
+    line: int
+    output: JsonValue = None
+
+
+class HardwarePolicyOutput(ProtocolModel):
+    policy_id: str
+    source: str
+    source_sha256: str
+    source_uri: str
+    status: str
+    steps: list[HardwarePolicyStepOutput] = Field(default_factory=list)
+    stdout: list[str] = Field(default_factory=list)
+    receipts: list[HardwareCommandReceiptOutput] = Field(default_factory=list)
+    snapshot: HardwareSnapshotOutput
+    report: HardwareVerificationOutput | None = None
+    task_outcome: str
+
+
+class HardwareEffectOutput(ProtocolModel):
+    action: str | None = None
+    devices: list[HardwareDeviceOutput] | None = None
+    snapshot: HardwareSnapshotOutput | None = None
+    lease: HardwareLeaseOutput | None = None
+    released: bool | None = None
+    receipt: HardwareCommandReceiptOutput | HardwareStopReceiptOutput | None = None
+    receipts: list[HardwareCommandReceiptOutput] | None = None
+    task_outcome: str | None = None
+    trace: HardwareTraceOutput | None = None
+    workspace: HardwareWorkspaceOutput | None = None
+    report: HardwareVerificationOutput | None = None
+    policy: HardwarePolicyOutput | None = None
+
+
 class _EffectDetailBase(ProtocolModel):
     tool_name: str
     display: EffectCallDisplay
@@ -286,6 +467,11 @@ class ProcessEffectDetail(_EffectDetailBase):
     input: JsonValue = None
 
 
+class HardwareEffectDetail(_EffectDetailBase):
+    kind: Literal[ToolEffectKind.HARDWARE] = ToolEffectKind.HARDWARE
+    input: HardwareEffectInput | None = None
+
+
 EffectDetail = Annotated[
     GenericEffectDetail
     | ShellEffectDetail
@@ -300,7 +486,8 @@ EffectDetail = Annotated[
     | SkillEffectDetail
     | SubagentEffectDetail
     | WorktreeEffectDetail
-    | ProcessEffectDetail,
+    | ProcessEffectDetail
+    | HardwareEffectDetail,
     Field(discriminator="kind"),
 ]
 

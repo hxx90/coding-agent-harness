@@ -27,6 +27,9 @@ from vibe.app_server.protocol import (
     CallbackResultError,
     CallbackResultResponse,
     EventWatermarkResponse,
+    HardwareStopParams,
+    HardwareStopReceipt,
+    HardwareStopResponse,
     InitializeParams,
     InvalidParamsData,
     InvalidParamsIssue,
@@ -476,6 +479,25 @@ def test_turn_queue_methods_are_advertised() -> None:
         "turn/queue/resume",
         "vibe/turn/queue/replace",
     }.isdisjoint(SERVER_METHODS)
+
+
+def test_hardware_emergency_stop_is_typed_and_advertised() -> None:
+    params = HardwareStopParams(session_id="session-1", reason="operator")
+    response = HardwareStopResponse(
+        receipts=[
+            HardwareStopReceipt(
+                device_id="sim-arm-1", acknowledged=True, message="stopped"
+            )
+        ],
+        all_acknowledged=True,
+    )
+
+    assert "hardware/stop" in SERVER_METHODS
+    assert params.model_dump(mode="json") == {
+        "sessionId": "session-1",
+        "reason": "operator",
+    }
+    assert response.model_dump(mode="json")["allAcknowledged"] is True
 
 
 def test_turn_queue_command_results_are_minimal() -> None:

@@ -64,6 +64,7 @@ _TOOL_CATEGORY_LABELS: dict[ToolEffectKind, str] = {
     ToolEffectKind.SUBAGENT: "ran subagents",
     ToolEffectKind.WORKTREE: "created worktrees",
     ToolEffectKind.TOOL: "called tools",
+    ToolEffectKind.HARDWARE: "controlled hardware",
 }
 
 _TOOL_CATEGORY_RUNNING_LABELS: dict[ToolEffectKind, str] = {
@@ -80,6 +81,7 @@ _TOOL_CATEGORY_RUNNING_LABELS: dict[ToolEffectKind, str] = {
     ToolEffectKind.SUBAGENT: "running subagents",
     ToolEffectKind.WORKTREE: "creating worktrees",
     ToolEffectKind.TOOL: "calling tools",
+    ToolEffectKind.HARDWARE: "controlling hardware",
 }
 
 

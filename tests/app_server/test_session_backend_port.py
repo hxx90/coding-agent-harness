@@ -14,6 +14,7 @@ from vibe.app_server._legacy_session_backend import (
 from vibe.app_server._session_backend_port import (
     SessionBackend,
     SessionBackendError,
+    SessionBackendHardwareControl,
     SessionBackendHost,
     SessionBackendQueuedTurnSteering,
 )
@@ -62,6 +63,7 @@ def test_session_backend_contract_covers_the_complete_session_lifecycle() -> Non
         "callback/result",
         "config/reload",
         "config/write",
+        "hardware/stop",
         "session/agent/update",
         "session/compact",
         "session/context/inject",
@@ -77,6 +79,7 @@ def test_session_backend_contract_covers_the_complete_session_lifecycle() -> Non
         "turn/steer",
     }
     assert _protocol_members(SessionBackendQueuedTurnSteering) == {"steer_queued_turn"}
+    assert _protocol_members(SessionBackendHardwareControl) == {"stop_hardware"}
 
 
 def test_session_backend_host_contract_owns_session_selection() -> None:
@@ -185,6 +188,7 @@ async def test_app_server_root_is_the_legacy_session_backend() -> None:
         _accept_session_backend_host(host)
         _accept_session_backend(backend)
         assert isinstance(backend, LegacySessionBackend)
+        assert isinstance(backend, SessionBackendHardwareControl)
         assert not isinstance(backend, SessionBackendQueuedTurnSteering)
 
         event_task = server._backend_event_task
@@ -243,6 +247,34 @@ async def test_app_server_root_is_the_legacy_session_backend() -> None:
             SessionReadParams(session_id=session.session_id)
         )
         assert replacement.snapshot.state.session.id == session.session_id
+    finally:
+        await session.close()
+
+
+@pytest.mark.asyncio
+async def test_app_server_emergency_stop_reaches_the_hardware_runtime() -> None:
+    agent_loop = build_test_agent_loop()
+    client_transport, server_transport = memory_transport_pair()
+    server = build_test_app_server(agent_loop, server_transport)
+    client = AppServerClient(client_transport, run_peer=server.serve)
+    session = await AppServerSession.start(
+        client,
+        client_info=ClientInfo(name="test", version="0"),
+        capabilities=ClientCapabilities(),
+    )
+    try:
+        await agent_loop.hardware_runtime.connect(
+            "sim-arm-1", run_id=session.session_id
+        )
+
+        stopped = await session.stop_hardware("test emergency")
+
+        assert stopped.all_acknowledged is True
+        assert [receipt.device_id for receipt in stopped.receipts] == ["sim-arm-1"]
+        observed = await agent_loop.hardware_runtime.observe(
+            "sim-arm-1", run_id=session.session_id
+        )
+        assert observed.status == "stopped"
     finally:
         await session.close()
 

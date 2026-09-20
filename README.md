@@ -294,16 +294,31 @@ vibe --prompt "Analyze the codebase" --max-turns 5 --max-price 1.0 --max-tokens 
 
 ### Hardware Harness and CaP-X
 
-Robo includes a deterministic local arm (`sim-arm-1`) and the `robo_devices`,
-`robo_observe`, `robo_execute`, `robo_sequence`, `robo_verify`, and `robo_stop`
-tools. Start the
+Robo includes a deterministic local arm (`sim-arm-1`) and the model-facing
+`robo_devices`, `robo_observe`, `robo_run_policy`, `robo_verify`, and `robo_stop`
+tools. Task-changing actions are expressed as bounded Python policies; the legacy
+single-action and sequence implementations remain internal compatibility paths and are
+not exposed to the model. Start the
 CLI with `uv run robo --workdir .` and ask it to discover, connect, lease, explicitly
 arm, and operate the simulated arm.
 
 For a visible Franka Panda simulation on macOS, install the optional simulator
 extra with `uv sync --extra simulator`, configure the bundled `robo-sim-mcp`
-adapter, and connect `mujoco-panda-1`. The local runbook contains the complete
-configuration and prompt.
+adapter, and connect `mujoco-panda-1`. Robo launches an independent, display-only
+native MuJoCo Viewer process fed by a local mmap state mirror. Its resizable window
+supports native mouse orbit, pan, and scroll zoom; closing the Viewer does not stop the
+simulator MCP. Robo also captures upright visual evidence and
+records an MP4 under the session's
+`hardware-runs/recordings/` directory. Hardware tool cards expose state,
+faults, recent trace events, evidence URIs, command receipts, and verification
+checks. Code-policy cards also expose the exact source, artifact URI, and ordered
+observation/action/verification outputs. Policy source is stored under the session's
+`hardware-runs/policies/` directory. In the default Legacy Harness, `Ctrl+Shift+X` requests a global
+acknowledged stop before interrupting the active agent turn.
+
+After stopping, release the old lease before reconnecting. Releasing the same
+lease is idempotent; a recovered connection must acquire a fresh lease and be
+armed again. The local runbook contains the complete configuration and prompt.
 
 To expose Robo as a CaP-X coding agent:
 
@@ -312,7 +327,8 @@ uv run robo-capx-bridge -C . --host 127.0.0.1 --port 8110 --trust
 uv run robo-capx-smoke --url http://127.0.0.1:8110/chat/completions
 ```
 
-See the [Chinese local runbook](docs/robo-harness-local-runbook.md) for MCP
+See the [Chinese Code-as-Policies plan](docs/robo-code-as-policy-plan.md) and
+[local runbook](docs/robo-harness-local-runbook.md) for MCP
 adapter configuration, trace locations, Mac limitations, and the Linux/NVIDIA
 CaP-X command.
 

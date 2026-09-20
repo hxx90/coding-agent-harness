@@ -20,11 +20,16 @@ pytestmark = pytest.mark.skipif(
 async def test_runtime_controls_mujoco_through_stdio_mcp(tmp_path: Path) -> None:
     pool = MCPConnectionPool()
     evidence_dir = tmp_path / "evidence"
+    recording_dir = tmp_path / "recordings"
     adapter = MCPStdioDeviceAdapter(
         adapter_id="robo-mujoco",
         command=[sys.executable, "-m", "vibe.hardware_sim.entrypoint"],
         pool=pool,
-        env={"ROBO_SIM_HEADLESS": "1", "ROBO_EVIDENCE_DIR": str(evidence_dir)},
+        env={
+            "ROBO_SIM_HEADLESS": "1",
+            "ROBO_EVIDENCE_DIR": str(evidence_dir),
+            "ROBO_RECORDING_DIR": str(recording_dir),
+        },
         cwd=str(Path.cwd()),
         startup_timeout_sec=20,
         tool_timeout_sec=20,
@@ -74,3 +79,6 @@ async def test_runtime_controls_mujoco_through_stdio_mcp(tmp_path: Path) -> None
         check.evidence_ids == verification.evidence_ids for check in verification.checks
     )
     assert stopped.acknowledged is True
+    recordings = list(recording_dir.glob("*.mp4"))
+    assert len(recordings) == 1
+    assert recordings[0].stat().st_size > 0

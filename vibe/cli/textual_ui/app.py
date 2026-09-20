@@ -648,6 +648,13 @@ class VibeApp(App):  # noqa: PLR0904
         Binding("ctrl+d", "delete_right_or_quit", "Quit", show=False, priority=True),
         Binding("ctrl+z", "suspend_with_message", "Suspend", show=False, priority=True),
         Binding("escape", "interrupt", "Interrupt", show=False, priority=True),
+        Binding(
+            "ctrl+shift+x",
+            "emergency_stop",
+            "Emergency Stop",
+            show=False,
+            priority=True,
+        ),
         Binding("ctrl+o", "toggle_tool", "Toggle Tool", show=False),
         Binding("ctrl+y", "copy_selection", "Copy", show=False, priority=True),
         Binding("ctrl+shift+c", "copy_selection", "Copy", show=False, priority=True),
@@ -5381,6 +5388,61 @@ class VibeApp(App):  # noqa: PLR0904
         if self._app_server is None:
             return
         self._try_interrupt()
+
+    def action_emergency_stop(self) -> None:
+        if self._app_server is None:
+            return
+        self.run_worker(self._emergency_stop(), exclusive=False)
+
+    async def _emergency_stop(self) -> None:
+        self.notify("Robo emergency stop requested…", severity="warning", markup=False)
+        report = None
+        stop_error: Exception | None = None
+        try:
+            # Hardware stop is the time-critical operation. Do not put turn
+            # cancellation (which may wait for a model stream or tool unwind)
+            # in front of the stop request.
+            report = await self.app_server.stop_hardware()
+        except Exception as exc:
+            stop_error = exc
+        interrupt_error: Exception | None = None
+        try:
+            if self._agent_job_active() and not self._interrupt_requested:
+                self._begin_interrupt_settle()
+                await self._interrupt_turn()
+        except Exception as exc:
+            interrupt_error = exc
+        if stop_error is not None:
+            self.notify(
+                f"Robo emergency stop failed: {stop_error}",
+                severity="error",
+                markup=False,
+                timeout=10,
+            )
+            return
+        if interrupt_error is not None:
+            self.notify(
+                f"Hardware stop returned, but the agent turn could not be interrupted: "
+                f"{interrupt_error}",
+                severity="warning",
+                markup=False,
+                timeout=10,
+            )
+        assert report is not None
+        stopped = sum(receipt.acknowledged for receipt in report.receipts)
+        if report.all_acknowledged:
+            self.notify(
+                f"Robo emergency stop acknowledged by {stopped} device(s).",
+                markup=False,
+            )
+            return
+        detail = ", ".join(sorted(report.failures)) or "unconfirmed device stop"
+        self.notify(
+            f"Robo emergency stop incomplete: {detail}",
+            severity="error",
+            markup=False,
+            timeout=10,
+        )
 
     async def on_history_load_more_requested(self, _: HistoryLoadMoreRequested) -> None:
         self._load_more.set_enabled(False)

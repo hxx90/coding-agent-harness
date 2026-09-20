@@ -28,6 +28,10 @@ from vibe.core.tools.builtins.robo import (
     RoboObserveArgs,
     RoboObserveConfig,
     RoboObserveResult,
+    RoboRunPolicy,
+    RoboRunPolicyArgs,
+    RoboRunPolicyConfig,
+    RoboRunPolicyResult,
     RoboStop,
     RoboStopArgs,
     RoboStopConfig,
@@ -140,6 +144,69 @@ async def test_robo_tools_share_the_session_hardware_runtime(tmp_path: Path) -> 
     assert RoboVerifyConfig().permission == "always"
     assert RoboStopConfig().permission == "always"
 
+    await runtime.aclose()
+
+
+@pytest.mark.asyncio
+async def test_robo_run_policy_executes_code_and_persists_it_in_the_session(
+    tmp_path: Path,
+) -> None:
+    session_dir = tmp_path / "session"
+    runtime = HardwareRuntime.simulated(trace_dir=session_dir / "hardware-runs")
+    context = InvokeContext(
+        tool_call_id="policy-tool",
+        session_id="session-1",
+        session_dir=session_dir,
+        hardware_runtime=runtime,
+    )
+    devices = RoboDevices.from_config(lambda: RoboDevicesConfig())
+    policy = RoboRunPolicy.from_config(lambda: RoboRunPolicyConfig(), cwd=tmp_path)
+    await _result(
+        devices.run(RoboDevicesArgs(action="connect", device_id="sim-arm-1"), context)
+    )
+    leased = await _result(
+        devices.run(RoboDevicesArgs(action="acquire", device_id="sim-arm-1"), context)
+    )
+    lease_id = leased.model_dump()["lease"]["lease_id"]
+    await _result(
+        devices.run(
+            RoboDevicesArgs(action="arm", device_id="sim-arm-1", lease_id=lease_id),
+            context,
+        )
+    )
+
+    result = await _result(
+        policy.run(
+            RoboRunPolicyArgs(
+                device_id="sim-arm-1",
+                lease_id=lease_id,
+                code=(
+                    'before = observe()\nfold_cloth(cloth="shirt")\n'
+                    'after = observe()\nreport = verify("cloth_folded", cloth="shirt")\n'
+                    'print(report["status"])'
+                ),
+            ),
+            context,
+        )
+    )
+
+    assert isinstance(result, RoboRunPolicyResult)
+    dumped = result.model_dump(mode="json")
+    policy_result = dumped["policy"]
+    assert policy_result["task_outcome"] == "passed"
+    assert policy_result["stdout"] == ["passed"]
+    assert [step["kind"] for step in policy_result["steps"]] == [
+        "observation",
+        "action",
+        "observation",
+        "verification",
+        "output",
+    ]
+    source_path = Path(result.policy.source_uri.removeprefix("file://"))
+    assert source_path.parent == session_dir / "hardware-runs" / "policies"
+    assert source_path.read_text(encoding="utf-8") == result.policy.source
+    assert RoboRunPolicyConfig().permission == "ask"
+    assert RoboExecute.is_available() is False
     await runtime.aclose()
 
 

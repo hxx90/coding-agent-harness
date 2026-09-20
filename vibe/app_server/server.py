@@ -24,6 +24,7 @@ from vibe.app_server._session_backend_port import (
     SessionBackendEvent,
     SessionBackendEventDrain,
     SessionBackendExtension,
+    SessionBackendHardwareControl,
     SessionBackendHistoryClearHost,
     SessionBackendHost,
     SessionBackendHostBackgroundTasks,
@@ -60,6 +61,7 @@ from vibe.app_server.protocol import (
     EventBatch,
     EventNotificationParams,
     EventsReadParams,
+    HardwareStopParams,
     InitializeParams,
     InitializeResponse,
     InvalidParamsData,
@@ -153,6 +155,7 @@ _SESSION_BACKEND_METHODS = frozenset({
     "callback/result",
     "config/reload",
     "config/write",
+    "hardware/stop",
     "session/agent/update",
     "session/compact",
     "session/context/inject",
@@ -1030,16 +1033,31 @@ class AppServer:
     ) -> DispatchResult | None:
         if method.startswith("session/turn/"):
             return await self._dispatch_backend_turn(root, method, raw_params)
-        match method.partition("/")[0]:
-            case "session":
-                return await self._dispatch_backend_session(root, method, raw_params)
-            case "turn":
-                return await self._dispatch_backend_turn(root, method, raw_params)
-            case "config":
-                return await self._dispatch_backend_config(root, method, raw_params)
-            case "callback":
-                return await self._dispatch_backend_callback(root, method, raw_params)
-        return None
+        dispatchers = {
+            "session": self._dispatch_backend_session,
+            "turn": self._dispatch_backend_turn,
+            "config": self._dispatch_backend_config,
+            "callback": self._dispatch_backend_callback,
+            "hardware": self._dispatch_backend_hardware,
+        }
+        dispatcher = dispatchers.get(method.partition("/")[0])
+        return (
+            None if dispatcher is None else await dispatcher(root, method, raw_params)
+        )
+
+    @staticmethod
+    async def _dispatch_backend_hardware(
+        root: SessionBackend, method: str, raw_params: dict[str, Any]
+    ) -> DispatchResult | None:
+        if method != "hardware/stop":
+            return None
+        if not isinstance(root, SessionBackendHardwareControl):
+            raise RequestFailure(
+                ProtocolErrorCode.NOT_IMPLEMENTED,
+                "The selected session backend has no hardware control",
+            )
+        result = await root.stop_hardware(validate_wire(HardwareStopParams, raw_params))
+        return DispatchResult(result.response, after_response=result.after_response)
 
     @staticmethod
     async def _dispatch_backend_session(

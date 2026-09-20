@@ -125,6 +125,7 @@ SERVER_METHODS: tuple[str, ...] = (
     "events/read",
     "feedback/record",
     "feedback/shouldShow",
+    "hardware/stop",
     "session/history/get",
     "identity/read",
     "loops/clear",
@@ -455,6 +456,23 @@ class SessionStopParams(ProtocolModel):
 
 class SessionStopResponse(ProtocolModel):
     closed: bool = True
+
+
+class HardwareStopParams(ProtocolModel):
+    session_id: str
+    reason: str = "operator emergency stop"
+
+
+class HardwareStopReceipt(ProtocolModel):
+    device_id: str
+    acknowledged: bool
+    message: str
+
+
+class HardwareStopResponse(ProtocolModel):
+    receipts: list[HardwareStopReceipt] = Field(default_factory=list)
+    failures: dict[str, str] = Field(default_factory=dict)
+    all_acknowledged: bool
 
 
 class SessionCloseParams(ProtocolModel):

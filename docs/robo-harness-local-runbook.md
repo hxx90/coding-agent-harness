@@ -6,12 +6,16 @@ Robo 现在包含一条可在 Apple Silicon Mac 上运行的硬件开发闭环�
 
 ```text
 Robo Agent
-  -> robo_* 类型化工具
+  -> robo_run_policy（模型生成受限 Python 策略）
+  -> observe / Manifest 动作 / verify 闭环
   -> HardwareRuntime（租约、安全仲裁、停止、Trace）
   -> DeterministicSimulatorAdapter 或厂商 MCP Adapter
 ```
 
-同时提供 CaP-X Agent Bridge：
+Textual 界面会把五个模型可见的 `robo_*` 工具渲染成硬件专用卡片，直接显示
+设备状态、策略源码及文件路径、逐步 observation/action/verification 输出、遥测、
+故障、证据路径、命令回执和验证结果。还提供 CaP-X Agent
+Bridge：
 
 ```text
 CaP-X Runner
@@ -36,20 +40,49 @@ uv run robo --workdir .
 
 ```text
 列出可用 Robo 设备，连接 sim-arm-1，获取租约并显式武装，
-用 fold_cloth 折叠 shirt，观察结果，然后停止设备。
+生成一段 Python 策略，用 fold_cloth 折叠 shirt；策略内先观察、执行动作、
+再次观察并用 cloth_folded 验证，最后停止设备。
 ```
 
 模型可使用以下工具：
 
 - `robo_devices`：发现、描述、连接、获取租约、武装、解除武装和释放租约；
 - `robo_observe`：读取设备状态、当前 run trace 和 Git 工作区状态；
-- `robo_execute`：执行一个 Manifest 声明的动作，默认需要批准；
-- `robo_sequence`：执行短动作序列，失败时请求停止；
+- `robo_run_policy`：执行模型生成的受限 Python 闭环策略，默认需要批准；
+- `robo_verify`：策略外诊断使用的只读任务验证；正常任务应在策略内调用
+  `verify()`；
 - `robo_stop`：独立请求停止并检查 Adapter ACK，始终允许调用。
+
+`robo_execute` 和 `robo_sequence` 仍保留为内部兼容类，但不会出现在模型工具
+列表里，所以模型不能再通过多轮单步 Tool Call 假装执行 Code-as-Policy。
+
+策略示例：
+
+```python
+before = observe()
+fold_cloth(cloth="shirt")
+after = observe()
+report = verify("cloth_folded", cloth="shirt")
+print(report["status"])
+```
+
+允许变量、下标、算术/比较、`if` 和有界循环；禁止 import、属性访问、函数/
+类定义、文件、网络和进程访问。整棵 AST 会在任何动作前完成校验。运行错误、
+取消或超时会请求停止设备，并向模型返回错误码、源码 URI 和行列，让模型先按
+当前物理状态重新观察，再生成修正版策略。
 
 确定性模拟器设备 ID 是 `sim-arm-1`。它不是物理仿真器，不模拟碰撞、布料动力学或相机，只用于验证 Harness 的控制语义。
 
-硬件 Trace 默认保存在当前会话目录的 `hardware-runs/<run_id>.jsonl`。关闭会话日志时，保存在项目的 `.vibe/hardware-runs/<session_id>/`。模型通过 `robo_observe` 最多只会看到最新 200 条事件，原始 JSONL 不会全部灌入上下文。
+硬件 Trace 默认保存在当前会话目录的 `hardware-runs/<run_id>.jsonl`，策略源码
+保存在 `hardware-runs/policies/<policy_id>.py`。关闭会话日志时，二者保存在项目的
+`.vibe/hardware-runs/<session_id>/` 下。模型通过 `robo_observe` 最多只会看到最新
+200 条事件，原始 JSONL 不会全部灌入上下文。
+
+在默认 Legacy Harness 中，任何时候都可以按 `Ctrl+Shift+X` 请求全局停止。
+Robo 会先向所有已连接或正在连接的设备发送停止，再中断当前 Agent turn；界面
+只有在 Adapter 返回 ACK 后才显示已确认停止。`--experimental-harness` 使用的
+Unified backend 目前还没有 Python `HardwareRuntime`，因此会明确返回
+`NOT_IMPLEMENTED`，不会伪装成停止成功。
 
 ### 启用有画面的 MuJoCo Panda
 
@@ -83,9 +116,18 @@ disabled_tools = [
 ]
 ```
 
-重启 Robo 后，让它连接 `mujoco-panda-1`。首次连接会打开 MuJoCo 窗口；
-`move_cartesian`、`gripper_open` 和 `gripper_close` 会实时驱动画面。在 macOS
-上 `robo-sim-mcp` 会自动使用 MuJoCo 提供的 `mjpython` 启动器。
+重启 Robo 后，让它连接 `mujoco-panda-1`。首次连接会打开由 Robo 管理的
+独立 MuJoCo 原生 Viewer 进程；`move_cartesian`、`gripper_open` 和
+`gripper_close` 会实时驱动画面。MuJoCo 仿真仍由 MCP 进程唯一持有，Viewer
+只加载只读模型副本，并通过本机 mmap 读取最新关节与 mocap 状态，不拥有控制接口。
+这样既避开了 macOS 的 GUI 主线程问题，也保留了 MuJoCo 原生相机交互。
+
+Viewer 默认从斜侧面显示完整 Panda、工作台和目标物体。窗口可以任意放大；按住
+鼠标左键拖动旋转视角，按住鼠标右键拖动平移，滚轮缩放。双击几何体可以把相机
+焦点切换到该物体。
+
+关闭窗口只会关闭 Viewer，机械臂控制继续运行；断开设备或退出 Robo 会自动回收
+Viewer、只读模型副本和临时状态缓冲。Viewer 异常退出也不会中断策略、证据或录像。
 
 ```text
 连接 mujoco-panda-1，获取租约并武装。先回到 home，
@@ -99,7 +141,45 @@ disabled_tools = [
 ROBO_SIM_HEADLESS = "1"
 ```
 
-## 二、运行本地自动化测试
+无论是否显示预览窗口，配置成 Robo 硬件 Adapter 后都会自动录制原生 MP4。
+`robo_stop`、断开连接或关闭会话会结束并落盘当前录像；随后调用
+`robo_observe`，可在 `snapshot.state.recording_uri` 看到文件 URI。默认目录为：
+
+```text
+<会话目录>/hardware-runs/recordings/robo-mujoco/*.mp4
+<会话目录>/hardware-runs/evidence/robo-mujoco/*.png
+```
+
+关闭会话日志时，对应目录在：
+
+```text
+<项目>/.vibe/hardware-runs/<session_id>/recordings/robo-mujoco/*.mp4
+<项目>/.vibe/hardware-runs/<session_id>/evidence/robo-mujoco/*.png
+```
+
+直接单独启动 `robo-sim-mcp` 时，也可以用 `ROBO_RECORDING_DIR` 和
+`ROBO_EVIDENCE_DIR` 指定这两个目录。RGB 证据帧和录像共用同一个离屏相机上下文，
+证据与视频方向已经统一为正向；原生 Viewer 使用独立的只读状态镜像渲染。
+
+## 二、安全停止、释放和重连
+
+正常结束或故障恢复按下面的顺序操作：
+
+```text
+robo_stop(device_id)
+-> robo_devices(action="release", device_id=..., lease_id=原租约)
+-> robo_devices(action="connect", device_id=...)
+-> robo_devices(action="acquire", device_id=...)
+-> robo_devices(action="arm", device_id=..., lease_id=新租约)
+```
+
+- `stop` 会撤销武装状态并保留原租约 ID，保证随后 `release` 能完成清理；
+- 同一租约的 `release` 可以安全重试，只记录一次释放事件；
+- 已武装或仍持有活动租约时直接重连会被拒绝；
+- 完成停止与释放后，重连会先断开旧 Adapter 连接，再建立新连接；
+- 重连后必须获取新租约并重新武装，旧租约不能继续控制设备。
+
+## 三、运行本地自动化测试
 
 运行 Robo 硬件 Runtime、MCP Adapter、工具和 CaP-X Bridge 的聚焦测试：
 
@@ -107,12 +187,16 @@ ROBO_SIM_HEADLESS = "1"
 uv run pytest \
   tests/core/hardware \
   tests/core/tools/builtins/test_robo.py \
+  tests/app_server/test_tool_projection.py \
   tests/capx
 ```
 
+其中 `tests/core/hardware/test_policy.py` 验证代码策略闭环、先校验后运动、循环
+上限、错误定位和失败停止；Robo Tool 测试验证策略源码会保存到会话目录。
+
 其中本地迷你 Bench 会模拟这个多轮场景：第一次代码引用不存在的变量并收到 stderr；第二次读取旧代码和错误后改成 `fold_cloth("shirt")`，最终完成任务。它使用白名单 AST 解释器，不在 Robo 进程内执行任意模型代码。
 
-## 三、启动 CaP-X Agent Bridge
+## 四、启动 CaP-X Agent Bridge
 
 先确保 Robo 的模型 Provider 和 API Key 已按主 README 配置。Bridge 自己的访问令牌是可选的 `ROBO_CAPX_API_KEY`，它不是模型 Key。
 
@@ -145,7 +229,7 @@ export ROBO_CAPX_API_KEY='自行填写，不要提交到仓库'
 
 CaP-X 客户端需要发送 `Authorization: Bearer <token>`。
 
-## 四、接入不同型号机械臂
+## 五、接入不同型号机械臂
 
 第一版支持本地 stdio MCP Adapter。厂商 Server 需要实现以下九个 Tool：
 
@@ -187,7 +271,7 @@ Server 返回的 `DeviceCapabilityManifest` 必须声明设备 ID、厂商、型
 
 每个 `VerificationCapability` 还应通过 `applicable_actions` 声明它验证哪些动作，并用 `parameter_bindings` 声明“验证参数名 -> 动作参数名”的映射。Runtime 只会用动作完成之后、映射参数一致且 `snapshot_sequence` 更新的报告解除验证门禁；旧帧或无关条件不会被当成该动作的后置条件。
 
-## 五、接入官方 CaP-X Bench
+## 六、接入官方 CaP-X Bench
 
 在 Linux x86_64/NVIDIA 机器上启动 Robo Bridge，然后在 CaP-X 仓库运行最小 S1 trial：
 
@@ -203,7 +287,7 @@ uv run --no-sync --active capx/envs/launch.py \
 
 先用 `--use-oracle-code True` 验证 CaP-X 环境自身，再去掉该参数验证 `prompt -> Robo -> Python -> simulator -> reward`。CaP-X 的生成代码必须在独立 worker/容器内执行，不能放入拥有真实硬件权限的 Robo 进程。
 
-## 六、本机 Robosuite 探测结果
+## 七、本机 Robosuite 探测结果
 
 2026-09-17 在 Apple M2 Max/macOS 上进行了以下探测：
 
