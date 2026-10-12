@@ -73,6 +73,10 @@ def parser() -> argparse.ArgumentParser:
     common.add_argument("--max-seconds", type=float)
     common.add_argument("--timeout", type=float, help="Model HTTP timeout in seconds")
     common.add_argument(
+        "--reasoning-effort",
+        help="Provider-supported reasoning effort (omitted by default)",
+    )
+    common.add_argument(
         "--test-command",
         help="Owner validation command, parsed as argv without a shell",
     )

@@ -104,15 +104,15 @@ def request_messages(
         )
     # First bound old tool output while leaving the newest four messages intact.
     for message in result[1:-4]:
-        if (
-            message.get("role") == "tool"
-            and isinstance(message.get("content"), str)
-            and len(message.get("content", "")) > 2000
-        ):
-            message["content"] = (
-                message["content"][:2000]
-                + "\n[Earlier tool output shortened; reread the source.]"
-            )
+        if message.get("role") != "tool":
+            continue
+        content = message.get("content")
+        if isinstance(content, str):
+            message["content"] = _shorten_tool_text(content)
+        elif isinstance(content, list):
+            for part in content:
+                if part.get("type") == "text" and isinstance(part.get("text"), str):
+                    part["text"] = _shorten_tool_text(part["text"])
     groups: list[list[Json]] = []
     for message in result[1:]:
         if message["role"] == "tool" and groups:
@@ -148,6 +148,17 @@ def request_messages(
             "The current request/tool exchange exceeds context_chars; shorten the request or increase the limit",
         )
     return candidate, True
+
+
+def _shorten_tool_text(text: str) -> str:
+    if len(text) <= 2000:
+        return text
+    # Job identifiers tend to lead; terminal errors and reports tend to trail.
+    return (
+        text[:1000]
+        + "\n[Earlier tool output shortened; reread the source for omitted details.]\n"
+        + text[-1000:]
+    )
 
 
 def _checkpoint(removed: list[Json]) -> str:

@@ -39,6 +39,7 @@ class CodingSession:
         question: Callable[[str], str] | None = None,
         stop: threading.Event | None = None,
         child: bool = False,
+        configure_tools: Callable[[ToolSet], None] | None = None,
     ) -> None:
         self.settings = settings
         self.model = model or Provider(
@@ -64,6 +65,7 @@ class CodingSession:
         self.question = question
         self.workspace = Workspace(settings)
         self.child = child
+        self.configure_tools = configure_tools
         secrets = [settings.provider.api_key]
         for server in settings.mcp.values():
             if isinstance(server, dict) and isinstance(server.get("env"), dict):
@@ -209,6 +211,17 @@ class CodingSession:
         extensions = Extensions(self, tools)
         journal = ChangeJournal(self.workspace, self.state, self._save)
         tools.observe = journal.execute
+        tools.budget = lambda: {
+            "http_requests_remaining": (
+                max(0, self.settings.provider.request_limit - self.model.request_count)
+                if self.settings.provider.request_limit is not None
+                and hasattr(self.model, "request_count")
+                else None
+            ),
+            "seconds_remaining": round(
+                max(0, self.settings.max_seconds - (time.monotonic() - started)), 3
+            ),
+        }
         partial: list[str] = []
         stream: StreamingRedactor | None = None
         try:
@@ -236,10 +249,13 @@ class CodingSession:
                 mode=self.permissions.mode,
             )
             extensions.open()
+            if self.configure_tools:
+                self.configure_tools(tools)
             system = system_prompt(
                 self.workspace, self.permissions.mode, extensions.skills.catalog()
             )
             repetitions: dict[str, int] = {}
+            output_limit_retries = 0
             while True:
                 if self.stop.is_set():
                     raise Cancelled()
@@ -252,7 +268,25 @@ class CodingSession:
                         "Task request or token budget exhausted; resume the session to continue",
                     )
                 messages, compacted = request_messages(
-                    self.redactor.text(system + tools.request_context()),
+                    self.redactor.text(
+                        system
+                        + "\nRemaining task budget (tokens include future input and output): "
+                        + json.dumps(
+                            {
+                                "model_turns": self.settings.max_turns - turns,
+                                "total_tokens": self.settings.max_tokens
+                                - usage["total_tokens"],
+                                "seconds": max(
+                                    0,
+                                    int(
+                                        self.settings.max_seconds
+                                        - (time.monotonic() - started)
+                                    ),
+                                ),
+                            }
+                        )
+                        + tools.request_context()
+                    ),
                     self.state["messages"],
                     self.settings.context_chars,
                     force=bool(self.state.pop("compact_next", False)),
@@ -299,6 +333,48 @@ class CodingSession:
                     raw_call["function"]["arguments"] = self.redactor.text(
                         raw_call["function"]["arguments"]
                     )
+                self.emit(
+                    "response_finished",
+                    usage=completion.usage,
+                    finish_reason=completion.finish_reason,
+                )
+                if completion.finish_reason in {"length", "max_tokens"}:
+                    # A completed, length-limited response has dispatched nothing.
+                    # Keep its exact redacted evidence outside the next request:
+                    # partial tool JSON is not a valid conversation tool call.
+                    self.emit(
+                        "response_rejected",
+                        reason="output_limit",
+                        message=message,
+                        tools_dispatched=0,
+                    )
+                    self.state["messages"].extend(
+                        [
+                            {
+                                "role": "assistant",
+                                "content": text
+                                or "[Response reached its output limit.]",
+                            },
+                            {
+                                "role": "user",
+                                "content": "Your previous response reached its output limit. "
+                                "None of its tool calls were executed. Produce a smaller, "
+                                "complete response using shorter programs or targeted edits; "
+                                "do not continue or splice the rejected tool JSON. "
+                                "Earlier executions are unaffected; retain their normal "
+                                "status and reconciliation checks.",
+                            },
+                        ]
+                    )
+                    partial = []
+                    self._save()
+                    output_limit_retries += 1
+                    if output_limit_retries > 1:
+                        raise CodingError(
+                            "incomplete_response",
+                            "Repeated model output limit; no tools from the rejected responses were executed",
+                        )
+                    continue
                 self.state["messages"].append(message)
                 partial = []
                 if completion.calls and completion.finish_reason not in {
@@ -313,11 +389,6 @@ class CodingSession:
                 # Journal all calls before the first tool can have side effects.
                 self.state["pending"] = [call.id for call in completion.calls]
                 self._save()
-                self.emit(
-                    "response_finished",
-                    usage=completion.usage,
-                    finish_reason=completion.finish_reason,
-                )
                 if not completion.calls:
                     if completion.finish_reason not in {"stop", "end_turn"}:
                         raise CodingError(
@@ -358,12 +429,14 @@ class CodingSession:
                     status = "completed"
                     break
                 for call in completion.calls:
-                    if self.stop.is_set():
+                    if self.stop.is_set() and not tools.finished:
                         raise Cancelled()
                     fingerprint = call.name + ":" + call.arguments
                     repetitions[fingerprint] = repetitions.get(fingerprint, 0) + 1
-                    if repetitions[fingerprint] > 5 and not tools.repeat_safe(
-                        call.name
+                    if (
+                        not tools.finished
+                        and repetitions[fingerprint] > 5
+                        and not tools.repeat_safe(call.name)
                     ):
                         raise CodingError(
                             "no_progress",
@@ -381,7 +454,14 @@ class CodingSession:
                         self.remaining_tokens = (
                             self.settings.max_tokens - usage["total_tokens"]
                         )
-                        outcome = tools.execute(call.name, call.arguments)
+                        outcome = (
+                            {
+                                "error": "session_finished",
+                                "message": "Not executed: a prior tool ended this session.",
+                            }
+                            if tools.finished
+                            else tools.execute(call.name, call.arguments)
+                        )
                         if call.name == "task":
                             turns += outcome.get("turns", 0)
                             for key in usage:
@@ -398,6 +478,7 @@ class CodingSession:
                         }
                         if exc.code in {"permission_required", "cancelled"}:
                             fatal = exc
+                    outcome = tools.after_result(call.name, outcome)
                     images = outcome.pop("_images", [])
                     outcome = self.redactor.value(outcome)
                     self.state["messages"].append(
@@ -414,6 +495,10 @@ class CodingSession:
                     )
                     if fatal:
                         raise fatal
+                if tools.finished:
+                    status = "completed"
+                    text = ""
+                    break
         except (CodingError, KeyboardInterrupt) as exc:
             if stream:
                 stream.finish()

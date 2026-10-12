@@ -62,6 +62,11 @@ class Provider:
         self.media = media
         self.redactor = Redactor([settings.api_key] if settings.api_key else [])
         self._token_parameter = LEGACY_TOKEN_PARAMETER
+        self.request_count = 0
+        if settings.request_limit is not None and (
+            type(settings.request_limit) is not int or settings.request_limit < 1
+        ):
+            raise CodingError("configuration", "request_limit must be a positive integer")
 
     def _headers(self) -> dict[str, str]:
         result = {"Accept": "application/json, text/event-stream"}
@@ -165,6 +170,11 @@ class Provider:
 
     @staticmethod
     def _validate(result: Completion) -> Completion:
+        # Some compatible gateways omit the JSON body for zero-argument tools.
+        # Normalize only absence, never repair or split malformed JSON bodies.
+        for call in result.calls:
+            if not call.arguments.strip():
+                call.arguments = "{}"
         ids = [call.id for call in result.calls]
         if len(set(ids)) != len(ids):
             raise CodingError("invalid_model_response", "Duplicate tool call IDs")
@@ -345,11 +355,19 @@ class Provider:
             payload.update(tools=tools, tool_choice="auto")
         if self.settings.temperature is not None:
             payload["temperature"] = self.settings.temperature
+        if self.settings.reasoning_effort is not None:
+            payload["reasoning_effort"] = self.settings.reasoning_effort
         if self.settings.stream:
             payload["stream_options"] = {"include_usage": True}
         attempt = 0
         compatibility_retried = False
         while attempt < 3:
+            if (
+                self.settings.request_limit is not None
+                and self.request_count >= self.settings.request_limit
+            ):
+                raise CodingError("budget_exhausted", "Model HTTP request limit exhausted")
+            self.request_count += 1  # Include transport and compatibility retries.
             emitted = False
 
             def relay(piece: str) -> None:

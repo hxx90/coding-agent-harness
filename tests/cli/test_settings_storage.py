@@ -46,6 +46,28 @@ def test_flags_override_environment_project_and_user_configuration(
     assert load_settings(project, environ=env).provider.model == "project"
 
 
+def test_reasoning_effort_is_optional_and_resolves_config_environment_and_flags(
+    tmp_path,
+):
+    env = {"XDG_CONFIG_HOME": str(tmp_path / "config")}
+    assert load_settings(tmp_path, environ=env).provider.reasoning_effort is None
+    (tmp_path / ".agent-harness.toml").write_text(
+        '[provider]\nreasoning_effort="high"\n'
+    )
+    assert load_settings(tmp_path, environ=env).provider.reasoning_effort == "high"
+    env["AGENT_HARNESS_REASONING_EFFORT"] = "medium"
+    assert load_settings(tmp_path, environ=env).provider.reasoning_effort == "medium"
+    settings = load_settings(tmp_path, {"reasoning_effort": "low"}, environ=env)
+    assert settings.provider.reasoning_effort == "low"
+    assert settings.public()["provider"]["reasoning_effort"] == "low"
+
+
+@pytest.mark.parametrize("value", ["", "  ", True, 1, "x" * 65])
+def test_invalid_reasoning_effort_fails_configuration(tmp_path, value):
+    with pytest.raises(CodingError, match="reasoning_effort"):
+        load_settings(tmp_path, {"reasoning_effort": value}, environ={})
+
+
 def test_secrets_are_not_in_configuration_display_or_repr(tmp_path: Path) -> None:
     settings = load_settings(
         tmp_path, environ={"AGENT_HARNESS_API_KEY": "test-secret-value"}

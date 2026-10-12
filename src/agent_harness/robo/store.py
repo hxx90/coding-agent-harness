@@ -7,6 +7,7 @@ import json
 import sqlite3
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 from agent_harness.coding.types import CodingError, Json
@@ -36,6 +37,29 @@ class Store:
             CREATE INDEX IF NOT EXISTS job_events ON events(job_id,seq);
         """)
 
+    @contextmanager
+    def transaction(self):
+        """Commit related evidence together; never span device I/O.
+
+        Nested operations use savepoints, so a caught inner failure cannot
+        leave partial writes behind. The outer SQLite context retains FULL
+        durability and rolls back if the commit itself fails.
+        """
+        with self.lock:
+            if not self.db.in_transaction:
+                with self.db:
+                    self.db.execute("BEGIN")
+                    yield
+            else:
+                self.db.execute("SAVEPOINT robo_write")
+                try:
+                    yield
+                except BaseException:
+                    self.db.execute("ROLLBACK TO robo_write")
+                    raise
+                finally:
+                    self.db.execute("RELEASE robo_write")
+
     def get(self, kind: str, key: str) -> Json:
         with self.lock:
             row = self.db.execute(
@@ -56,7 +80,7 @@ class Store:
 
     def put(self, kind: str, key: str, value: Json, *, immutable: bool = False) -> None:
         body = canonical(value)
-        with self.lock, self.db:
+        with self.transaction():
             old = self.db.execute(
                 "SELECT body FROM objects WHERE kind=? AND id=?", (kind, key)
             ).fetchone()
@@ -74,7 +98,7 @@ class Store:
         value: Json = {"type": kind, "timestamp": time.time(), **data}
         if job:
             value.update(job_id=job["id"], program_version=job["program_version"])
-        with self.lock, self.db:
+        with self.transaction():
             cursor = self.db.execute(
                 "INSERT INTO events(job_id,body) VALUES(?,?)",
                 (value.get("job_id"), canonical(value)),
@@ -84,7 +108,7 @@ class Store:
 
     def create_job(self, job: Json, fingerprint: str) -> None:
         """Commit the reconnect key and job before starting any physical work."""
-        with self.lock, self.db:
+        with self.transaction():
             self.db.executemany(
                 "INSERT INTO objects VALUES(?,?,?)",
                 [

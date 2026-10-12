@@ -4,6 +4,8 @@ The host owns authorization, motion constraints, timeouts and verification.
 This file is copied into ProgramVersion's runtime; no live repo imports occur.
 """
 
+# ruff: noqa: E402 -- freeze sys.path before any non-builtin imports.
+
 from __future__ import annotations
 
 import sys
@@ -26,7 +28,9 @@ from typing import Any
 
 
 class DeviceError(Exception):
-    pass
+    def __init__(self, message: str, *, code: str | None = None) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 class Robo:
@@ -34,21 +38,59 @@ class Robo:
         self.parameters = config["parameters"]
         self.job_id = config["job_id"]
         self.program_version = config["program_version"]
+        self._calls = 0
 
-    def _request(self, operation: str, **args: Any) -> dict[str, Any]:
+    def _request(self, operation: str, /, **args: Any) -> dict[str, Any]:
         assert sys.__stdout__ is not None and sys.__stdin__ is not None
         sys.__stdout__.write(json.dumps({"op": operation, "args": args}) + "\n")
         sys.__stdout__.flush()
-        line = sys.__stdin__.readline(2 * 1024 * 1024)
+        line = sys.__stdin__.readline(24 * 1024 * 1024 + 1)
+        if len(line) > 24 * 1024 * 1024:
+            raise DeviceError("Device response exceeds wire budget")
         if not line:
             raise DeviceError("Execution host disconnected; no further device access")
         reply = json.loads(line)
         if "error" in reply:
-            raise DeviceError(reply["error"] + ": " + reply.get("message", ""))
+            raise DeviceError(
+                reply["error"] + ": " + reply.get("message", ""), code=reply["error"]
+            )
         return dict(reply["result"])
 
     def discover(self) -> dict[str, Any]:
         return self._request("devices")
+
+    def call(self, device: str, operation: str, *args: Any, **kwargs: Any) -> Any:
+        """Invoke one granted driver operation; never retry an uncertain call.
+
+        The fresh observation is acquired locally, not by another model turn.
+        All calls, including perception, are recorded with a durable command ID.
+        """
+        from _robo_wire import decode, encode
+
+        self._calls += 1
+        # Encode potentially large arrays before sampling the action's basis;
+        # serialization time must not consume the observation freshness window.
+        encoded_args, encoded_kwargs = encode(args), encode(kwargs)
+        for attempt in range(2):
+            observation = self.observe()
+            try:
+                response = self._request(
+                    "call",
+                    device=device,
+                    operation=operation,
+                    args=encoded_args,
+                    kwargs=encoded_kwargs,
+                    based_on=observation["id"],
+                    command_id=f"call-{self._calls}",
+                )
+            except DeviceError as exc:
+                # This exact host rejection precedes any durable action intent.
+                # Refresh once with the SAME command identity. Driver failures,
+                # lost acknowledgments and unknown outcomes are never replayed.
+                if exc.code != "stale_observation" or attempt:
+                    raise
+            else:
+                return decode(response["value"])
 
     def observe(self) -> dict[str, Any]:
         return self._request("observe")
@@ -78,6 +120,27 @@ class Robo:
 
     def log(self, text: str) -> dict[str, Any]:
         return self._request("log", text=str(text))
+
+    def report(
+        self,
+        stage: str,
+        status: str,
+        *,
+        observations: list[str] | tuple[str, ...] = (),
+        measurements: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Record a small stage assessment, not host verification or a motion grant.
+
+        Use ordinary control flow to stop dependent actions on fail/unknown.
+        Reports share log/event limits; the host keeps the latest one in snapshots.
+        """
+        return self._request(
+            "report",
+            stage=stage,
+            status=status,
+            observations=observations,
+            measurements={} if measurements is None else measurements,
+        )
 
     def sleep(self, seconds: float) -> None:
         time.sleep(seconds)
@@ -122,7 +185,26 @@ def main() -> None:
         config["archive"],
         config["runtime"] + "/stdlib.zip",
         config["runtime"] + "/native",
+        config["runtime"] + "/packages",
     ]
+    if sys.platform == "linux":
+        from _robo_linux import restrict
+
+        paths = [config["archive"], config["runtime"]]
+        paths += [
+            p
+            for p in (
+                "/lib",
+                "/lib64",
+                "/usr/lib",
+                "/etc/ld.so.cache",
+                "/etc/localtime",
+                "/dev/null",
+                "/dev/urandom",
+            )
+            if os.path.exists(p)
+        ]
+        restrict(paths)
     robo = Robo(config)
     builtins.robo = robo  # type: ignore[attr-defined]
 

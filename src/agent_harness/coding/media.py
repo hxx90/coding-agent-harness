@@ -158,7 +158,20 @@ class MediaStore:
         and omitted-frame notices remain in the text transcript.
         """
         result: list[Json] = []
-        selected = {id(ref) for ref in references(messages)[-8:]}
+        # Transmit the latest occurrence of each distinct frame. Historical
+        # timestamps remain visible, even when identical pixels are deduplicated.
+        selected: set[tuple[int, int]] = set()
+        seen: set[str] = set()
+        for message_index in range(len(messages) - 1, -1, -1):
+            content = messages[message_index].get("content")
+            if not isinstance(content, list):
+                continue
+            for part_index in range(len(content) - 1, -1, -1):
+                ref = content[part_index]
+                if ref.get("type") == "image_ref" and ref["id"] not in seen:
+                    if len(selected) < 8:
+                        selected.add((message_index, part_index))
+                    seen.add(ref["id"])
         pending: list[Json] = []
         total = 0
         for index, message in enumerate(messages):
@@ -166,9 +179,12 @@ class MediaStore:
             content = message.get("content")
             if isinstance(content, list):
                 parts: list[Json] = []
-                for part in content:
+                for part_index, part in enumerate(content):
                     if part["type"] == "text":
-                        parts.append(copy.deepcopy(part))
+                        # Tool text is already retained in the tool message.
+                        # The extra user message carries only visual evidence.
+                        if message["role"] != "tool":
+                            parts.append(copy.deepcopy(part))
                         continue
                     parts.append(
                         {
@@ -177,7 +193,7 @@ class MediaStore:
                             + json.dumps(part),
                         }
                     )
-                    if id(part) not in selected:
+                    if (index, part_index) not in selected:
                         continue
                     data = self.get(part)
                     total += len(data)

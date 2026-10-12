@@ -26,6 +26,8 @@ class ProviderSettings:
     temperature: float | None = None
     max_output_tokens: int = 8192
     stream: bool = True
+    reasoning_effort: str | None = None
+    request_limit: int | None = None
 
 
 @dataclass(frozen=True)
@@ -43,6 +45,7 @@ class Settings:
     protected: tuple[str, ...] = ()
     sensitive: tuple[str, ...] = ()
     editable: tuple[str, ...] | None = None
+    allowed_tools: tuple[str, ...] | None = None
     permission_rules: tuple[Json, ...] = ()
     mcp: Json = field(default_factory=dict, repr=False)
     skill_dirs: tuple[Path, ...] = ()
@@ -220,6 +223,18 @@ def load_settings(
     stream = args.get("stream", provider.get("stream", True))
     if not isinstance(stream, bool):
         raise CodingError("configuration", "stream must be true or false")
+    reasoning_effort = args.get(
+        "reasoning_effort",
+        env.get("AGENT_HARNESS_REASONING_EFFORT", provider.get("reasoning_effort")),
+    )
+    if reasoning_effort is not None and (
+        not isinstance(reasoning_effort, str)
+        or not reasoning_effort.strip()
+        or len(reasoning_effort) > 64
+    ):
+        raise CodingError(
+            "configuration", "reasoning_effort must be a nonempty short string"
+        )
 
     legacy_path = root / ".agent-harness.json"
     legacy: Json = {}
@@ -314,6 +329,7 @@ def load_settings(
                 _positive(provider.get("max_output_tokens", 8192), "max_output_tokens")
             ),
             stream=stream,
+            reasoning_effort=reasoning_effort,
         ),
         mode=mode,
         max_turns=int(

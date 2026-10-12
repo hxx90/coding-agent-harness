@@ -11,17 +11,20 @@ import re
 import selectors
 import signal
 import subprocess
+import sys
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 
 from agent_harness.coding.media import MediaStore
 from agent_harness.coding.types import CodingError, Json
 
 from .hardware import MHS_STATUS, Hardware, SimHardware
-from .programs import Programs
-from .store import Store, digest
+from .programs import Programs, parameter_ranges
+from .store import Store, canonical, digest
+from .wire import MAX_WIRE
 
 TERMINAL = {"exited", "failed", "cancelled", "timed_out", "interrupted"}
 DEFAULT_LIMITS = {
@@ -34,11 +37,20 @@ DEFAULT_LIMITS = {
     "max_step_mm": 4,
     "max_speed_mm_s": 10,
     "observation_age_s": 2,
+    # Admission is not a motion command. Operators can allow model latency
+    # here without relaxing the local feedback deadline for any device action.
+    "submission_observation_age_s": 2,
 }
 
 
 def resident_bytes(pid: int) -> int:
-    """macOS PROC_PIDTASKINFO, sampled by the host (not a memory reservation)."""
+    """OS RSS, sampled by the host (not a memory reservation)."""
+    if sys.platform == "linux":
+        try:
+            pages = int(Path(f"/proc/{pid}/statm").read_text().split()[1])
+            return pages * os.sysconf("SC_PAGE_SIZE")
+        except (FileNotFoundError, ProcessLookupError):
+            return 0
     library = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
     data = ctypes.create_string_buffer(96)
     length = library.proc_pidinfo(pid, 4, 0, data, len(data))
@@ -62,18 +74,36 @@ def number(value: object, name: str, minimum: float, maximum: float) -> float:
 
 class Runtime:
     def __init__(
-        self, root: Path, *, backend: str = "sim", camera: str | None = None
+        self,
+        root: Path,
+        *,
+        backend: str = "sim",
+        camera: str | None = None,
+        hardware_factory: Callable[[Store, MediaStore], Hardware] | None = None,
+        packages: tuple[str, ...] = (),
+        limits: Json | None = None,
+        max_jobs: int | None = None,
     ) -> None:
-        if backend not in {"sim", "camera"}:
+        if max_jobs is not None and (type(max_jobs) is not int or max_jobs < 1):
+            raise CodingError("invalid_limit", "max_jobs must be a positive integer")
+        self.max_jobs = max_jobs
+        if hardware_factory is None and backend not in {"sim", "camera"}:
             raise CodingError(
                 "mhs_unavailable", MHS_STATUS["reason"], details=MHS_STATUS
             )
         if camera is not None and backend != "camera":
             raise CodingError("invalid_backend", "--camera requires --backend camera")
+        self.limits = dict(DEFAULT_LIMITS)
+        for name, value in (limits or {}).items():
+            if name not in self.limits:
+                raise CodingError("invalid_limit", f"Unsupported host limit: {name}")
+            number(value, name, 0.01, 1e9)
+            self.limits[name] = value
         self.store = Store(root)
         self.media = MediaStore(root / "media")
         self.hardware: Hardware
         self.condition = threading.Condition(threading.RLock())
+        self.publication_lock = threading.Lock()
         self.workers: dict[str, tuple[threading.Thread, threading.Event]] = {}
         self.closing = False
         try:
@@ -82,25 +112,30 @@ class Runtime:
             # Pre-camera stores belong to the original simulated workcell.
             if identity is None and (self.store.all("job") or self.store.all("device")):
                 identity = {"backend": "sim", "resource": "sim-workcell"}
-            if identity and identity["backend"] != backend:
+            if identity and hardware_factory is None and identity["backend"] != backend:
                 raise CodingError(
                     "device_identity",
                     "This home belongs to another backend; use a separate --home",
                 )
-            if backend == "camera":
+            if hardware_factory is not None:
+                self.hardware = hardware_factory(self.store, self.media)
+            elif backend == "camera":
                 from .camera import CameraHardware
 
                 self.hardware = CameraHardware(self.store, self.media, camera)
             else:
                 self.hardware = SimHardware(self.store, self.media)
-            current = {"backend": backend, "resource": self.hardware.resource}
+            current = {
+                "backend": self.hardware.backend,
+                "resource": self.hardware.resource,
+            }
             if identity and identity != current:
                 raise CodingError(
                     "device_identity",
                     "This home belongs to another device; use a separate --home",
                 )
             self.store.put("runtime", "identity", current, immutable=True)
-            self.programs = Programs(self.store)
+            self.programs = Programs(self.store, packages=packages)
             self._recover()
         except BaseException:
             if hasattr(self, "hardware"):
@@ -145,6 +180,14 @@ class Runtime:
         self.condition.notify_all()
 
     def request(self, op: str, args: Json) -> Json:
+        if op == "publish":
+            # Freeze files outside the control lock: I/O must not stall action
+            # deadlines, cancellation or protection. Publications still serialize.
+            with self.publication_lock:
+                with self.condition:
+                    if self.closing:
+                        raise CodingError("host_stopping", "Host is shutting down")
+                return self.programs.publish(args)
         with self.condition:
             if op == "health":
                 return {
@@ -155,7 +198,17 @@ class Runtime:
                     "mhs": MHS_STATUS,
                 }
             if op == "devices":
-                return self.hardware.discover()
+                return {
+                    **self.hardware.discover(),
+                    "program_dependencies": self.programs.dependencies(),
+                    "program_limits": self.limits,
+                    "verification": dict(self.hardware.goal),
+                    "remaining_jobs": (
+                        None
+                        if self.max_jobs is None
+                        else max(0, self.max_jobs - len(self.store.all("job")))
+                    ),
+                }
             if op == "snapshot":
                 keys = args.get("job_ids", [])
                 if not isinstance(keys, list) or len(keys) > 8:
@@ -184,6 +237,7 @@ class Runtime:
                                     "physical_verification",
                                     "uncertain_action",
                                     "counts",
+                                    "latest_report",
                                 }
                             },
                         }
@@ -194,10 +248,6 @@ class Runtime:
                 return self._observe(
                     self._job(args["job_id"]) if args.get("job_id") else None
                 )
-            if op == "publish":
-                if self.closing:
-                    raise CodingError("host_stopping", "Host is shutting down")
-                return self.programs.publish(args)
             if op == "submit":
                 return self.submit(args)
             if op == "status":
@@ -256,6 +306,8 @@ class Runtime:
             raise CodingError(
                 "unavailable", "Host stopping or device protection latched"
             )
+        if self.max_jobs is not None and len(self.store.all("job")) >= self.max_jobs:
+            raise CodingError("resource_limit", "Host execution-job budget exhausted")
         if any(
             action["status"] in {"unknown", "dispatching"}
             for action in self.store.all("action")
@@ -292,11 +344,11 @@ class Runtime:
                 "device_grant",
                 "Program must request explicit supported device operations",
             )
-        limits = dict(DEFAULT_LIMITS)
+        limits = dict(self.limits)
         for key, value in manifest.get("limits", {}).items():
             if key not in limits:
                 raise CodingError("invalid_limit", f"Unsupported limit: {key}")
-            number(value, key, 0.01, DEFAULT_LIMITS[key])
+            number(value, key, 0.01, self.limits[key])
             if key in {
                 "cpu_seconds",
                 "memory_mb",
@@ -307,20 +359,18 @@ class Runtime:
                 raise CodingError("invalid_limit", f"{key} must be an integer")
             limits[key] = value
         parameters = args.get("parameters", {})
-        definitions = manifest.get("parameters", {})
-        if set(parameters) != set(definitions):
+        definitions = parameter_ranges(manifest.get("parameters", {}))
+        if not isinstance(parameters, dict) or set(parameters) != set(definitions):
             raise CodingError(
                 "invalid_parameters", "Parameters must exactly match the manifest"
             )
-        for key, spec in definitions.items():
-            low = number(spec["min"], key + ".min", -1e6, 1e6)
-            high = number(spec["max"], key + ".max", low, 1e6)
+        for key, (low, high) in definitions.items():
             number(parameters[key], key, low, high)
         policy = args.get("disconnect_policy", "continue_bounded")
         if policy not in {"continue_bounded", "cancel"}:
             raise CodingError("invalid_policy", "Use continue_bounded or cancel")
         observation = self.store.get("observation", args["based_on"])
-        self._fresh(observation, limits["observation_age_s"])
+        self._fresh(observation, limits["submission_observation_age_s"])
         now = time.time()
         job: Json = {
             "id": "job_" + uuid.uuid4().hex,
@@ -375,9 +425,14 @@ class Runtime:
             )
 
     def events(self, args: Json) -> Json:
+        if self.closing:
+            raise CodingError("host_stopping", "Host is shutting down")
         job_id = args["job_id"]
         after = int(number(args.get("after", 0), "after", 0, 1e15))
-        wait = number(args.get("wait", 0), "wait", 0, 10)
+        until = args.get("until", "events")
+        if until not in ("events", "terminal"):
+            raise CodingError("invalid_arguments", "until must be events or terminal")
+        wait = number(args.get("wait", 0), "wait", 0, 30 if until == "terminal" else 10)
         deadline = time.monotonic() + wait
         job = self._job(job_id)
         if job["disconnect_policy"] == "cancel" and job["status"] not in TERMINAL:
@@ -386,14 +441,23 @@ class Runtime:
             self._save(job)
             deadline = min(deadline, time.monotonic() + 4)
         while True:
+            if self.closing:
+                raise CodingError("host_stopping", "Host is shutting down")
             job = self._job(job_id)
-            value = self.store.events(job_id, after)
-            if (
-                value["events"]
-                or job["status"] in TERMINAL
+            ready = (
+                job["status"] in TERMINAL
                 or time.monotonic() >= deadline
-            ):
-                return {**value, "job": job}
+                or (
+                    until == "terminal"
+                    and (job["status"] == "cancelling" or job.get("uncertain_action"))
+                )
+            )
+            # A terminal wait batches feedback, not device execution. Do not
+            # repeatedly read the same page on every local action wakeup.
+            if until == "events" or ready:
+                value = self.store.events(job_id, after)
+                if ready or value["events"]:
+                    return {**value, "job": job}
             self.condition.wait(min(1, max(0, deadline - time.monotonic())))
 
     def cancel(self, job_id: str) -> Json:
@@ -410,14 +474,32 @@ class Runtime:
         return job
 
     def gateway(self, key: str, op: str, args: Json) -> Json:
+        if op == "call":
+            return self._device_call(key, args)
         with self.condition:
             job = self._job(key)
             if job["status"] != "running" or time.time() >= job["deadline"]:
                 raise CodingError("job_stopped", "Job no longer has device authority")
+            report = self._program_report(job, args) if op == "report" else None
             counts, limits = job["counts"], job["limits"]
             counts["events"] += 1
             if counts["events"] > limits["max_events"]:
                 raise CodingError("resource_limit", "Event budget exhausted")
+            if op in {"log", "report"}:
+                data = report if report is not None else {"text": str(args["text"])}
+                size = canonical(data) if report is not None else data["text"]
+                counts["log_bytes"] += len(size.encode())
+                if counts["log_bytes"] > limits["max_log_bytes"]:
+                    self._save(job)
+                    raise CodingError("resource_limit", "Log budget exhausted")
+                with self.store.transaction():
+                    event = self.store.event(
+                        job, "program_report" if report is not None else "log", **data
+                    )
+                    if report is not None:
+                        job["latest_report"] = event
+                    self._save(job)
+                    return event
             self._save(job)
             device = self.hardware.operation_devices.get(op)
             if op in {"observe", "move", "query"} and (
@@ -431,16 +513,185 @@ class Runtime:
                 return self.hardware.discover()
             if op == "observe":
                 return self.hardware.observe(job)
-            if op == "log":
-                text = str(args["text"])
-                counts["log_bytes"] += len(text.encode())
-                self._save(job)
-                if counts["log_bytes"] > limits["max_log_bytes"]:
-                    raise CodingError("resource_limit", "Log budget exhausted")
-                return self.store.event(job, "log", text=text)
             if op in {"move", "query"}:
                 return self._action(job, op, args)
             raise CodingError("device_grant", "Worker operation is not permitted")
+
+    def _program_report(self, job: Json, args: Json) -> Json:
+        """Validate a small program claim, without judging it or operating devices."""
+        if not isinstance(args, dict) or set(args) != {
+            "stage",
+            "status",
+            "measurements",
+            "observations",
+        }:
+            raise CodingError("invalid_report", "Report fields do not match the SDK")
+        stage, status = args["stage"], args["status"]
+        observations = args["observations"]
+        if (
+            not isinstance(stage, str)
+            or not stage.strip()
+            or len(stage) > 128
+            or not isinstance(status, str)
+            or status not in {"pass", "fail", "unknown"}
+            or not isinstance(args["measurements"], dict)
+            or not isinstance(observations, list)
+            or len(observations) > 4
+            or any(not isinstance(key, str) for key in observations)
+        ):
+            raise CodingError(
+                "invalid_report",
+                "Report needs a stage, pass/fail/unknown, measurements object and up to four observation IDs",
+            )
+        try:
+            encoded = canonical(args).encode()
+        except (TypeError, ValueError, OverflowError, RecursionError) as exc:
+            raise CodingError(
+                "invalid_report",
+                "Report must be finite JSON: NaN, Infinity and non-JSON values are invalid. Check empty or non-finite measurements before reporting.",
+            ) from exc
+        if len(encoded) > 2048:
+            raise CodingError(
+                "invalid_report",
+                "Report exceeds 2048 UTF-8 bytes; keep selected measurements only",
+            )
+        evidence = []
+        for key in observations:
+            observation = self.store.get("observation", key)
+            if (
+                observation.get("job_id") != job["id"]
+                or observation.get("program_version") != job["program_version"]
+            ):
+                raise CodingError(
+                    "invalid_report", "Report evidence belongs to another job"
+                )
+            evidence.append({"id": key, "sampled_at": observation["sampled_at"]})
+        report = {**args, "source": "program", "observations": evidence}
+        if len(canonical(report).encode()) > 2048:
+            raise CodingError(
+                "invalid_report", "Report with evidence exceeds 2048 UTF-8 bytes"
+            )
+        return report
+
+    def _device_call(self, key: str, args: Json) -> Json:
+        """Authorize/persist before dispatch, without locking out cancellation.
+
+        Operator-installed drivers implement invoke and reconcile. invoke must
+        honor the supplied deadline/cancellation event and never silently retry.
+        Unknown outcomes fence subsequent calls and remain unknown on recovery
+        unless the driver can supply evidence for the original command ID.
+        """
+        with self.condition:
+            job = self._job(key)
+            if job["status"] != "running" or time.time() >= job["deadline"]:
+                raise CodingError("job_stopped", "Job no longer has device authority")
+            device, operation = args.get("device"), args.get("operation")
+            if (
+                not isinstance(device, str)
+                or not isinstance(operation, str)
+                or operation not in job["devices"].get(device, [])
+                or not hasattr(self.hardware, "invoke")
+            ):
+                raise CodingError(
+                    "device_grant", "Unsupported or ungranted driver operation"
+                )
+            command_id = args.get("command_id")
+            if not isinstance(command_id, str) or not re.fullmatch(
+                r"[A-Za-z0-9_.:-]{1,100}", command_id
+            ):
+                raise CodingError("invalid_command", "A bounded command_id is required")
+            action_key = key + ":" + command_id
+            fingerprint = digest(args)
+            try:
+                previous = self.store.get("action", action_key)
+            except CodingError:
+                previous = None
+            if previous:
+                if previous["fingerprint"] != fingerprint:
+                    raise CodingError(
+                        "command_conflict",
+                        "Command ID reused with different parameters",
+                    )
+                if previous["status"] != "confirmed":
+                    raise CodingError(
+                        "reconciliation_required",
+                        "Original call outcome is not confirmed",
+                    )
+                if "error" in previous:
+                    raise CodingError("device_error", previous["error"])
+                return {"value": previous["result"]}
+            if job.get("uncertain_action"):
+                raise CodingError(
+                    "reconciliation_required",
+                    "Query the original command before further calls",
+                )
+            observation = self.store.get("observation", args["based_on"])
+            if observation.get("job_id") != key:
+                raise CodingError(
+                    "observation_conflict", "Call requires this job's observation"
+                )
+            self._fresh(observation, job["limits"]["observation_age_s"])
+            job["counts"]["actions"] += 1
+            job["counts"]["events"] += 1
+            if job["counts"]["events"] > job["limits"]["max_events"]:
+                raise CodingError("resource_limit", "Event budget exhausted")
+            if job["counts"]["actions"] > job["limits"]["max_actions"]:
+                raise CodingError("resource_limit", "Action budget exhausted")
+            action = {
+                "id": action_key,
+                "job_id": key,
+                "program_version": job["program_version"],
+                "command_id": command_id,
+                "fingerprint": fingerprint,
+                "status": "dispatching",
+                "device_operation": operation,
+                "device": device,
+                "args": args,
+                "timestamp": time.time(),
+            }
+            with self.store.transaction():
+                self._save(job)
+                self.store.put("action", action_key, action)
+                self._device_event(job, "action_intent", action)
+            stop = self.workers[key][1]
+        try:
+            result = self.hardware.invoke(
+                action, deadline=job["deadline"], cancelled=stop
+            )
+        except Exception as exc:
+            with self.condition:
+                job = self._job(key)
+                # A driver-confirmed API exception differs from a lost reply.
+                confirmed_error = (
+                    isinstance(exc, CodingError) and exc.code == "device_error"
+                )
+                action.update(
+                    status="confirmed" if confirmed_error else "unknown",
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+                if not confirmed_error:
+                    job["uncertain_action"] = action_key
+                with self.store.transaction():
+                    self._save(job)
+                    self.store.put("action", action_key, action)
+                    self._device_event(job, "action_result", action)
+            if confirmed_error:
+                raise
+            raise CodingError(
+                "action_unknown", "Query original command; never replay: " + str(exc)
+            ) from exc
+        with self.condition:
+            action.update(status="confirmed", result=result)
+            with self.store.transaction():
+                self.store.put("action", action_key, action)
+                self._device_event(self._job(key), "action_result", action)
+        return {"value": result}
+
+    def _device_event(self, job: Json, kind: str, action: Json) -> None:
+        # Full numerical payloads stay durable in the action store, not in
+        # every event page/model context. Images use the existing media store.
+        summary = {k: v for k, v in action.items() if k not in {"args", "result"}}
+        self.store.event(job, kind, action=summary)
 
     def _action(self, job: Json, op: str, args: Json) -> Json:
         command_id = args["command_id"]
@@ -459,6 +710,19 @@ class Runtime:
             if old is None:
                 return {"status": "not_dispatched", "command_id": command_id}
             if old["status"] in {"unknown", "dispatching"}:
+                if "device_operation" in old:
+                    result = self.hardware.reconcile(old)
+                    if result.get("status") == "confirmed":
+                        old.update(
+                            status="confirmed",
+                            result=result["result"],
+                            reconciled_at=time.time(),
+                        )
+                        self.store.put("action", key, old)
+                        job.pop("uncertain_action", None)
+                        self._save(job)
+                    self._device_event(job, "action_reconciled", old)
+                    return old
                 evidence = self._observe(job)
                 position = [evidence["state"]["x_mm"], evidence["state"]["y_mm"]]
                 if position == old["target_mm"]:
@@ -566,7 +830,14 @@ class Runtime:
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     cwd=self.store.root,
-                    env={"PATH": "/usr/bin:/bin", "LANG": "en_US.UTF-8"},
+                    env={
+                        "PATH": "/usr/bin:/bin",
+                        "LANG": "en_US.UTF-8",
+                        "OPENBLAS_NUM_THREADS": "1",
+                        "OMP_NUM_THREADS": "1",
+                        "MKL_NUM_THREADS": "1",
+                        "NUMEXPR_NUM_THREADS": "1",
+                    },
                     start_new_session=True,
                     pass_fds=(live_read,),
                 )
@@ -582,15 +853,23 @@ class Runtime:
             with selectors.DefaultSelector() as selector:
                 selector.register(process.stdout, selectors.EVENT_READ, "rpc")
                 selector.register(process.stderr, selectors.EVENT_READ, "stderr")
+                next_refresh = 0.0
                 while process.poll() is None or selector.get_map():
                     with self.condition:
-                        job = self._job(key)
+                        # Device payloads may span hundreds of pipe reads. Poll
+                        # mutable host state at a control cadence, not per 8 KiB
+                        # of data (especially on network-backed durable stores).
+                        if time.monotonic() >= next_refresh:
+                            job = self._job(key)
+                            next_refresh = time.monotonic() + 0.05
                         now = time.time()
                         if (
                             job["disconnect_policy"] == "cancel"
                             and now >= job["client_deadline"]
                         ):
-                            self.cancel(key)
+                            job = self._job(key)
+                            if now >= job["client_deadline"]:
+                                self.cancel(key)
                         if stop.is_set() or now >= job["deadline"]:
                             status = "cancelled" if stop.is_set() else "timed_out"
                             break
@@ -611,7 +890,7 @@ class Runtime:
                             if not outgoing:
                                 selector.unregister(process.stdin)
                             continue
-                        chunk = os.read(selected.fd, 8192)
+                        chunk = os.read(selected.fd, 65536)
                         if not chunk:
                             selector.unregister(selected.fileobj)
                             continue
@@ -623,14 +902,19 @@ class Runtime:
                                 )
                             continue
                         pending.extend(chunk)
-                        if len(pending) > 64_000:
+                        if len(pending) > MAX_WIRE:
                             raise CodingError(
-                                "resource_limit", "Worker request exceeds 64,000 bytes"
+                                "resource_limit", "Worker request exceeds wire budget"
                             )
                         while b"\n" in pending:
                             line, _, rest = pending.partition(b"\n")
                             pending = bytearray(rest)
                             request = json.loads(line)
+                            if request["op"] != "call" and len(line) > 64_000:
+                                raise CodingError(
+                                    "resource_limit",
+                                    "Worker request exceeds 64,000 bytes",
+                                )
                             try:
                                 reply: Json = {
                                     "result": self.gateway(
@@ -646,10 +930,10 @@ class Runtime:
                                     process.stdin, selectors.EVENT_WRITE, "reply"
                                 )
                             outgoing.extend((json.dumps(reply) + "\n").encode())
-                            if len(outgoing) > 2 * 1024 * 1024:
+                            if len(outgoing) > MAX_WIRE:
                                 raise CodingError(
                                     "resource_limit",
-                                    "Worker response backlog exceeds 2 MiB",
+                                    "Worker response backlog exceeds wire budget",
                                 )
                     if not selector.get_map() and process.poll() is None:
                         stop.wait(0.02)
@@ -734,9 +1018,12 @@ class Runtime:
     def close(self) -> None:
         with self.condition:
             self.closing = True
+            self.condition.notify_all()
             for key in self.workers:
                 self.cancel(key)
         for thread, _ in self.workers.values():
             thread.join(timeout=10)
         self.hardware.close()
-        self.store.db.close()
+        # Stop devices first, then let an in-flight publication finish its writes.
+        with self.publication_lock:
+            self.store.db.close()

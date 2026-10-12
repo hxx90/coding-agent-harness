@@ -7,24 +7,47 @@ import os
 import signal
 import socketserver
 import threading
+from collections.abc import Callable
 from contextlib import closing
 from pathlib import Path
 
 from filelock import FileLock, Timeout
 
+from agent_harness.coding.media import MediaStore
 from agent_harness.coding.types import CodingError, Json
 
 from .client import MAX_WIRE, socket_path
+from .hardware import Hardware
 from .runtime import Runtime
+from .store import Store
 
 
-def serve(root: Path, *, backend: str = "sim", camera: str | None = None) -> None:
+def serve(
+    root: Path,
+    *,
+    backend: str = "sim",
+    camera: str | None = None,
+    hardware_factory: Callable[[Store, MediaStore], Hardware] | None = None,
+    packages: tuple[str, ...] = (),
+    limits: Json | None = None,
+    max_jobs: int | None = None,
+) -> None:
     root = root.resolve()
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     try:
         with (
             FileLock(str(root / "host.lock"), timeout=0),
-            closing(Runtime(root, backend=backend, camera=camera)) as runtime,
+            closing(
+                Runtime(
+                    root,
+                    backend=backend,
+                    camera=camera,
+                    hardware_factory=hardware_factory,
+                    packages=packages,
+                    limits=limits,
+                    max_jobs=max_jobs,
+                )
+            ) as runtime,
         ):
             path = socket_path(root)
             path.unlink(missing_ok=True)
@@ -79,7 +102,7 @@ def serve(root: Path, *, backend: str = "sim", camera: str | None = None) -> Non
                     json.dumps(
                         {
                             "status": "ready",
-                            "backend": backend,
+                            "backend": runtime.hardware.backend,
                             "root": str(root),
                             "socket": str(path),
                         }

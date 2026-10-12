@@ -13,8 +13,8 @@ from agent_harness.robo.client import Client
 
 @pytest.fixture
 def host(tmp_path):
-    if sys.platform != "darwin":
-        pytest.skip("Robo's first OS sandbox is macOS; Linux is explicitly unsupported")
+    if sys.platform not in {"darwin", "linux"}:
+        pytest.skip("Robo requires macOS or Linux isolation")
     root = tmp_path / "host"
     processes = []
 
@@ -33,7 +33,9 @@ def host(tmp_path):
             env={**os.environ, "ROBO_HOME": str(root)},
         )
         processes.append(process)
-        deadline = time.monotonic() + 5
+        # Cold imports on the shared workspace can exceed five seconds while
+        # simulator/vision services start. This fixture is not a startup SLA.
+        deadline = time.monotonic() + 15
         client = Client(root)
         while time.monotonic() < deadline:
             if process.poll() is not None:
@@ -45,9 +47,12 @@ def host(tmp_path):
                 time.sleep(0.03)
         raise AssertionError("Host did not start")
 
-    client, process = start()
-    yield client, process, start
-    for process in processes:
-        if process.poll() is None:
-            process.terminate()
-        process.communicate(timeout=15)
+    try:
+        client, process = start()
+        yield client, process, start
+    finally:
+        # Also reap children when setup fails before reaching yield.
+        for process in processes:
+            if process.poll() is None:
+                process.terminate()
+            process.communicate(timeout=15)

@@ -47,6 +47,16 @@ def test_json_fallback_usage_metadata_and_models(model_server):
     assert client.models() == ["test-model"]
 
 
+@pytest.mark.parametrize("effort", [None, "medium", "high"])
+def test_reasoning_effort_is_forwarded_only_when_configured(model_server, effort):
+    client, requests, _ = provider(model_server, [answer()], reasoning_effort=effort)
+    complete(client)
+    if effort is None:
+        assert "reasoning_effort" not in requests[0]
+    else:
+        assert requests[0]["reasoning_effort"] == effort
+
+
 def test_stream_assembles_text_tool_arguments_and_usage(model_server):
     stream = sse(
         {
@@ -95,6 +105,36 @@ def test_stream_assembles_text_tool_arguments_and_usage(model_server):
     assert result.calls[0].arguments == '{"path":"a.py"}'
     assert result.extra["reasoning_content"] == "private"
     assert result.usage == {"total_tokens": 20}
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+def test_empty_tool_arguments_are_normalized_without_repairing_json(
+    model_server, streaming
+):
+    calls = [call("robo_devices", {}, "empty"), call("read", {}, "malformed")]
+    calls[0]["function"]["arguments"] = ""
+    calls[1]["function"]["arguments"] = '{"path":"a"}{"path":"b"}'
+    payload = answer(calls=calls)
+    if streaming:
+        payload = sse(
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "tool_calls": [
+                                {"index": i, **value} for i, value in enumerate(calls)
+                            ]
+                        },
+                        "finish_reason": "tool_calls",
+                    }
+                ]
+            },
+            "[DONE]",
+        )
+    client, _, _ = provider(model_server, [payload])
+    result = complete(client)
+    assert result.calls[0].arguments == "{}"
+    assert result.calls[1].arguments == '{"path":"a"}{"path":"b"}'
 
 
 @pytest.mark.parametrize(
@@ -208,6 +248,28 @@ def test_retry_budget_is_finite(model_server):
     with pytest.raises(CodingError):
         complete(client)
     assert len(requests) == 3
+
+
+def test_configured_timeout_preserves_slow_nonstream_tools_and_usage(model_server):
+    client, requests, _ = provider(
+        model_server,
+        [
+            Reply(
+                delay_headers=0.3,
+                body=answer(
+                    "", [call("write", {"path": "control.py", "text": "pass"})]
+                ),
+            )
+        ],
+        timeout=2,
+        stream=False,
+    )
+    result = complete(client)
+    assert len(requests) == 1
+    assert requests[0]["stream"] is False
+    assert result.calls[0].name == "write"
+    assert result.usage["total_tokens"] == 15
+    assert result.finish_reason == "tool_calls"
 
 
 def test_stream_limit_includes_lines_without_newlines(model_server):

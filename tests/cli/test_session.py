@@ -4,6 +4,7 @@ import json
 import subprocess
 import sys
 import threading
+import time
 from dataclasses import replace
 
 import pytest
@@ -37,6 +38,108 @@ def setup(tmp_path, model_server):
 
 def allow():
     return ({"tool": "*", "action": "allow"},)
+
+
+def limited_answer(calls=None, *, reason="length"):
+    response = answer("Partial response", calls)
+    response["choices"][0]["finish_reason"] = reason
+    return response
+
+
+@pytest.mark.parametrize("reason", ["length", "max_tokens"])
+@pytest.mark.parametrize(
+    "arguments", ['{"path":', "{}", '{"path":"b.txt","content":"bad"}']
+)
+def test_output_limit_retries_complete_response_without_dispatching_any_call(
+    setup,
+    reason,
+    arguments,
+):
+    first = call("write", {"path": "a.txt", "content": "must not run"}, "first")
+    second = call("write", {}, "partial")
+    second["function"]["arguments"] = arguments
+    session, requests, events = setup(
+        [
+            limited_answer([first, second], reason=reason),
+            answer("", [call("write", {"path": "good.txt", "content": "ok"}, "good")]),
+            answer("Finished"),
+        ],
+        permission_rules=allow(),
+    )
+    result = session.run("Write a file")
+    assert result.status == "completed" and result.turns == 3
+    assert result.usage["total_tokens"] == 45
+    assert len(requests) == 3
+    assert not (session.settings.project / "a.txt").exists()
+    assert not (session.settings.project / "b.txt").exists()
+    assert (session.settings.project / "good.txt").read_text() == "ok"
+    assert not any(message.get("tool_calls") for message in requests[1]["messages"])
+    assert (
+        "None of its tool calls were executed" in requests[1]["messages"][-1]["content"]
+    )
+    rejected = [event for event in events if event["type"] == "response_rejected"]
+    assert len(rejected) == 1 and rejected[0]["tools_dispatched"] == 0
+    assert rejected[0]["message"]["tool_calls"][1]["function"]["arguments"] == arguments
+    assert [event["id"] for event in events if event["type"] == "tool_started"] == [
+        "good"
+    ]
+    received = [event for event in events if event["type"] == "response_finished"]
+    assert len(received) == 3
+    assert sum(event["usage"]["total_tokens"] for event in received) == 45
+
+
+def test_output_limit_without_tools_does_not_claim_completion(setup):
+    session, requests, events = setup([limited_answer(), answer("Actually finished")])
+    result = session.run("Explain")
+    assert result.status == "completed" and result.text == "Actually finished"
+    assert result.turns == 2 and result.usage["total_tokens"] == 30
+    assert len(requests) == 2
+    assert not any(event["type"] == "tool_started" for event in events)
+
+
+def test_repeated_output_limit_stops_and_resume_does_not_replay(setup):
+    rejected_call = call("write", {"path": "bad.txt", "content": "never"})
+    session, requests, events = setup(
+        [
+            limited_answer([rejected_call]),
+            limited_answer([rejected_call]),
+            answer("Resumed"),
+        ],
+        permission_rules=allow(),
+    )
+    result = session.run("Write")
+    assert result.status == "error" and "Repeated model output limit" in result.error
+    assert result.turns == 2 and result.usage["total_tokens"] == 30
+    assert len(requests) == 2
+    assert not any(event["type"] == "tool_started" for event in events)
+    loaded = CodingSession(session.settings, session_id=session.id)
+    assert loaded.run("Explain what happened").text == "Resumed"
+    assert not (session.settings.project / "bad.txt").exists()
+    assert not any(message.get("tool_calls") for message in requests[2]["messages"])
+
+
+@pytest.mark.parametrize("budget", [{"max_turns": 1}, {"max_tokens": 15}])
+def test_output_limit_recovery_respects_remaining_budget(setup, budget):
+    session, requests, events = setup([limited_answer()], **budget)
+    result = session.run("Explain")
+    assert result.status == "budget_exhausted"
+    assert result.turns == 1 and result.usage["total_tokens"] == 15
+    assert len(requests) == 1
+    assert len([event for event in events if event["type"] == "response_finished"]) == 1
+
+
+def test_filtered_response_is_not_retried_but_usage_is_recorded(setup):
+    response = limited_answer(
+        [call("write", {"path": "bad.txt", "content": "never"})],
+        reason="content_filter",
+    )
+    session, requests, events = setup([response], permission_rules=allow())
+    result = session.run("Write")
+    assert result.status == "error" and result.usage["total_tokens"] == 15
+    assert len(requests) == 1
+    assert not (session.settings.project / "bad.txt").exists()
+    assert not any(event["type"] == "response_rejected" for event in events)
+    assert len([event for event in events if event["type"] == "response_finished"]) == 1
 
 
 def test_real_http_agent_reads_edits_validates_repairs_and_resumes(setup):
@@ -146,6 +249,27 @@ def test_budgets_stop_before_another_request(setup, options):
     assert len(requests) == 1
 
 
+def test_remaining_budget_is_visible_and_resets_on_resume(setup):
+    session, requests, _ = setup(
+        [answer("", [call("glob", {})]), answer("Done"), answer("Resumed")],
+        max_turns=4,
+        max_tokens=1000,
+    )
+    assert session.run("Explore").status == "completed"
+    assert session.run("Continue").status == "completed"
+    budgets = [
+        json.loads(
+            request["messages"][0]["content"].split(
+                "Remaining task budget (tokens include future input and output): "
+            )[1]
+        )
+        for request in requests
+    ]
+    assert [b["model_turns"] for b in budgets] == [4, 3, 4]
+    assert [b["total_tokens"] for b in budgets] == [1000, 985, 1000]
+    assert all(0 <= b["seconds"] <= session.settings.max_seconds for b in budgets)
+
+
 def test_repeated_identical_operation_is_stopped(setup):
     session, requests, _ = setup([answer("", [call("glob", {})])] * 6)
     result = session.run("Explore")
@@ -156,7 +280,6 @@ def test_repeated_identical_operation_is_stopped(setup):
 
 
 def test_cancelled_shell_retains_files_balances_calls_and_is_resumable(setup):
-    command = f'{sys.executable} -c "import time; open("cancel.txt","w").write("kept"); time.sleep(20)"'
     # shlex quoting avoids shell escaping differences.
     import shlex
 
@@ -181,14 +304,27 @@ def test_cancelled_shell_retains_files_balances_calls_and_is_resumable(setup):
         ],
         permission_rules=allow(),
     )
-    timer = threading.Timer(0.3, session.stop.set)
-    timer.start()
+    path = session.settings.project / "cancel.txt"
+    done = threading.Event()
+
+    def cancel_after_write():
+        deadline = time.monotonic() + 5
+        while not done.wait(0.01):
+            if (
+                path.is_file() and path.read_text() == "kept"
+            ) or time.monotonic() >= deadline:
+                session.stop.set()
+                return
+
+    watcher = threading.Thread(target=cancel_after_write, daemon=True)
+    watcher.start()
     try:
         result = session.run("Run command")
     finally:
-        timer.cancel()
+        done.set()
+        watcher.join(timeout=2)
     assert result.status == "cancelled"
-    assert (session.settings.project / "cancel.txt").read_text() == "kept"
+    assert path.read_text() == "kept"
     loaded = CodingSession(session.settings, session_id=session.id)
     assert loaded.run("Continue").status == "completed"
 

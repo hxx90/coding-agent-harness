@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import copy
 import json
 import threading
 from pathlib import Path
@@ -21,31 +22,56 @@ POLICY = """
 Robo — A runtime for agents that act in the physical world.
 The host is independent of this conversation. Local programs use camera pixels
 and the injected robo SDK for feedback; model thinking is not the control clock.
-Discover the active backend: sim is a simulated camera/stage; camera is a real
-macOS AVFoundation camera, observation-only. Neither is an MHS integration.
-Native camera pixels are uncalibrated: do not infer metric motion or assume a
-scene goal from successful acquisition. No microphone is captured. Host capture
-continues while the host runs; cancelling a job revokes that job's access.
-Discover devices and inspect a fresh observation before submitting a program.
+Discover the active backend, available operations, coordinate frames and units.
+Respect its calibration and privileges; do not infer metric motion or physical
+success from image acquisition, process exit or an API's successful return.
+Build the next meaningful state change and its effect check. Reuse working helpers;
+revise the failed hypothesis. Ground selected measurements in an entity/role,
+image region or sensor location, coordinate frame and observation. Before/after
+comparisons must describe the same entity; ambiguous identity is unknown.
+After a consequential action, use fresh sensor evidence that distinguishes its
+required effect from failure. A condition that also holds when the action fails
+does not establish that effect; requested poses are not observed poses.
+Implement that check as control flow before dependent actions: if status != "pass":
+return from the program's main function. Ambiguous/occluded evidence is "unknown",
+not success; a log message alone does not guard the next action.
+Keep arrays and candidate sets local; report the selected evidence and concise
+measurements. robo.report(stage, status, observations=[o["id"]],
+measurements={...}) records pass/fail/unknown with up to four same-job observations
+and a small finite JSON object (2048 UTF-8 bytes total, charged to log/event limits).
+The latest report stays in the host snapshot, labeled as a program claim, not
+independent verification. report itself neither stops the program nor grants motion.
+Discover devices; after publishing, inspect a fresh observation before submitting.
 Use the existing read/write/edit/apply_patch tools to develop source files.
 ProgramVersion freezes all declared Python files, the SDK and Python libraries.
-No ambient site packages: vendor Python dependencies and list every source file.
-Manifests need entrypoint, files, dependencies={}, devices using discovered IDs
-(native-camera: observe; or sim-camera: observe and sim-stage: move/query), bounded
-numeric parameters, and limits. Host ceilings cannot be raised by the manifest.
-The sim validator checks alignment to (0,0) mm with error <=1 mm over 3 samples.
-The native camera validator checks distinct fresh frames; physical scene success
-remains unknown until a separate scene predicate is implemented.
+No ambient site packages: vendor Python sources or explicitly declare packages
+from the host's program_dependencies. The host freezes their installed bytes.
+Manifests need entrypoint, files, dependencies (name to installed version or '*'),
+devices (discovered device IDs to requested operation lists), parameters, and limits.
+Declare parameter ranges, e.g. {"gain": {"min": 0, "max": 1}}; program_run supplies
+their values, e.g. {"gain": 0.5}, matching all declared names. Bounds must be finite
+and within [-1e6, 1e6]. Empty dependencies/parameters are valid. Manifests cannot raise the
+host's program_limits. Verification is defined by the active device, not you.
+submission_observation_age_s bounds program admission; observation_age_s still
+bounds every local device action. Admission alone never authorizes stale motion.
 Generated code uses injected `robo`: parameters, discover(), observe(),
-centroid(observation)->(x,y) finds a simple red marker (sim target is 32,32),
+call(device, operation, *args, **kwargs) invokes one granted driver operation,
+acquiring a fresh observation locally; numerical arrays are transferred losslessly.
+Legacy sim helpers: centroid(observation)->(x,y) finds a red marker (target 32,32),
 move(dx,dy,based_on=observation['id'],command_id=stable_id,speed=5),
-query(command_id), log(text), sleep(seconds). Moves are bounded to 4 mm per axis.
+query(command_id), log(text), sleep(seconds). Sim moves are bounded to 4 mm per axis.
 Every motion needs a fresh observation from that job. If motion is unknown,
 query the original command ID and inspect feedback before any further motion.
 Choose a stable program_run request_id before submission. If a reply is lost,
 program_lookup that ID; never create another physical execution to retry.
 Use program_events with an advancing cursor and bounded wait for logs, images
 and state. Images are historical evidence with timestamps, not live state.
+When a bounded job needs no intervention, use until="terminal", wait=30 to wait
+for completion instead of frequent model polling. Cancellation or an uncertain
+action wakes early; default until="events" retains intermediate feedback.
+After a terminal result, drain unread event pages using the advancing cursor.
+Events and nested observations inherit repeated job/version identities from their enclosing job.
+They omit static job metadata; program_status returns the full job when needed.
 Model completion, process exit, device stop and physical verification are
 separate facts. Model cancellation does not cancel continue_bounded jobs.
 program_cancel requests cancellation; query until stop_confirmation is confirmed.
@@ -53,6 +79,33 @@ continue_bounded jobs survive disconnected clients up to their deadline; cancel
 policy requires event polling at least every 5 seconds or the host cancels it.
 Undo only restores workspace files; it cannot undo motion or change a running version.
 """
+
+
+def event_page(value: Json) -> Json:
+    """Compact the model view, not the durable event stream or client protocol.
+
+    Keep dynamic and unknown fields, logs, timestamps and action outcomes exact.
+    Only known static job metadata and exactly repeated identities are omitted.
+    Full job metadata remains available through program_status.
+    """
+    page = copy.deepcopy(value)
+    job = page.get("job", {})
+    for key in ("hardware", "devices", "limits", "parameters", "goal"):
+        job.pop(key, None)
+
+    def inherit(item: Json) -> None:
+        for key, parent in (("job_id", "id"), ("program_version", "program_version")):
+            if parent in job and item.get(key) == job[parent]:
+                item.pop(key, None)
+
+    if isinstance(job.get("physical_verification"), dict):
+        inherit(job["physical_verification"])
+    for event in page.get("events", []):
+        inherit(event)
+        for key in ("action", "physical_verification", "observation"):
+            if isinstance(event.get(key), dict):
+                inherit(event[key])
+    return page
 
 
 def remember_job(state: Json, job: Json) -> None:
@@ -116,7 +169,9 @@ def register(session: CodingSession, tools: ToolSet, root: Path) -> None:
         observations = (
             [value]
             if operation == "observe"
-            else [e.get("observation", {}) for e in value.get("events", [])]
+            else [
+                e["observation"] for e in value.get("events", []) if "observation" in e
+            ]
         )
         for observation in observations[-4:]:
             if not isinstance(observation, dict):
@@ -133,7 +188,7 @@ def register(session: CodingSession, tools: ToolSet, root: Path) -> None:
                 )
         if images:
             value["_images"] = images
-        return value
+        return event_page(value) if operation == "events" else value
 
     def publish(arguments: Json) -> Json:
         # All workspace sources cross the existing path/secret checks.
@@ -163,9 +218,14 @@ def register(session: CodingSession, tools: ToolSet, root: Path) -> None:
         (
             "program_publish",
             "publish",
-            {"manifest": {"type": "string"}},
+            {
+                "manifest": {
+                    "type": "string",
+                    "description": "Workspace-relative path to a manifest JSON file, e.g. program.json; not inline JSON.",
+                }
+            },
             ["manifest"],
-            "Freeze manifest and every declared Python dependency from the workspace.",
+            "Syntax-check Python sources and freeze the manifest and declared dependencies; this does not run the program or operate devices.",
         ),
         (
             "program_run",
@@ -207,10 +267,11 @@ def register(session: CodingSession, tools: ToolSet, root: Path) -> None:
             {
                 "job_id": {"type": "string"},
                 "after": {"type": "integer"},
-                "wait": {"type": "number"},
+                "wait": {"type": "number", "minimum": 0, "maximum": 30},
+                "until": {"type": "string", "enum": ["events", "terminal"]},
             },
             ["job_id"],
-            "Incremental logs, observations, actions, errors and events; wait 0..10 seconds.",
+            "Incremental evidence with an advancing cursor. Default until=events waits 0..10 seconds for any event; until=terminal waits 0..30 seconds for execution end, cancellation or uncertain action. Neither mode skips events; drain remaining pages after stop.",
         ),
         (
             "program_cancel",

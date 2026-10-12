@@ -48,7 +48,13 @@ class Client:
             raise CodingError("request_limit", "Robo request exceeds 4 MiB")
 
         async def exchange() -> Json:
-            async with asyncio.timeout(20):
+            # Freezing approved native dependencies can take longer than a
+            # short host query. Publication has no device effects and remains
+            # cancellable while its content-addressed result is built.
+            timeout = 120 if op == "publish" else 20
+            if op == "events" and args.get("until") == "terminal":
+                timeout = 40  # Host wait is bounded to 30 seconds plus transport.
+            async with asyncio.timeout(timeout):
                 reader, writer = await asyncio.open_unix_connection(
                     str(socket_path(self.root)), limit=MAX_WIRE
                 )

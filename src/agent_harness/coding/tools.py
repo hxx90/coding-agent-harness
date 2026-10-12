@@ -9,10 +9,12 @@ import shutil
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import httpx
 
+from .context import attach
 from .permissions import PLAN_TOOLS, Permissions
 from .provider import interruptible
 from .settings import Settings
@@ -42,7 +44,7 @@ BOOLEAN = {"type": "boolean"}
 SCHEMAS = [
     schema(
         "read",
-        "Read a UTF-8 project file with line numbers. Read existing files before editing. Scoped AGENTS.md instructions are returned with the file.",
+        "Read a UTF-8 project file with line numbers or view a PNG/JPEG/WebP image. Read existing files before editing. Scoped AGENTS.md instructions are returned with the file.",
         {"path": STRING, "offset": INTEGER, "limit": INTEGER},
         ["path"],
     ),
@@ -77,7 +79,7 @@ SCHEMAS = [
     ),
     schema(
         "apply_patch",
-        "Apply a unified diff (---/+++ and @@ hunks). Read affected existing files first. Use bash with approval for file deletion or renaming.",
+        "Apply a unified diff with ---/+++ headers and numbered hunks, e.g. @@ -1,1 +1,1 @@ (bare @@ is invalid). Read affected existing files first. File deletion and renaming are unsupported.",
         {"patch": STRING},
         ["patch"],
     ),
@@ -168,6 +170,10 @@ class ToolSet:
         self.validated_snapshot: Json | None = None
         self.observe: Callable[[str, Callable[[], Json]], Json] | None = None
         self.request_context: Callable[[], str] = lambda: ""
+        # Owner hooks, never controlled by tool arguments or result JSON.
+        self.budget: Callable[[], Json] = dict
+        self.after_result: Callable[[str, Json], Json] = lambda name, result: result
+        self.finished = False
 
     def register(self, tool: ExtraTool) -> None:
         name = tool.definition["function"]["name"]
@@ -182,6 +188,12 @@ class ToolSet:
 
     def schemas(self) -> list[Json]:
         definitions = [*SCHEMAS, *(extra.definition for extra in self.extras.values())]
+        if self.settings.allowed_tools is not None:
+            definitions = [
+                item
+                for item in definitions
+                if item["function"]["name"] in self.settings.allowed_tools
+            ]
         if not self.settings.validation_command:
             definitions = [
                 item for item in definitions if item["function"]["name"] != "test"
@@ -296,6 +308,13 @@ class ToolSet:
 
     def _execute(self, name: str, args: Json) -> Json:
         if name == "read":
+            if Path(args["path"]).suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}:
+                content = attach(self.workspace, "", (args["path"],))
+                return {
+                    "path": args["path"],
+                    "_images": content[1:],
+                    "instructions": self.workspace.instructions(args["path"]),
+                }
             return self.workspace.read(
                 args["path"], args.get("offset", 1), args.get("limit", 200)
             )

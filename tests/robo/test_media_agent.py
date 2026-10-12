@@ -151,6 +151,80 @@ def test_multimodal_compaction_preserves_tool_groups(tmp_path):
     assert len(references(compacted)) < 12
 
 
+def test_compaction_keeps_user_constraints_and_recent_parallel_tool_images(tmp_path):
+    media = MediaStore(tmp_path)
+    frame = media.put(png(2, 2, bytes([0] * 12)), "image/png")
+    request = {"role": "user", "content": "Inspect feedback. Do not start another job."}
+    messages = [request]
+    for index in range(12):
+        ids = [f"events-{index}", f"status-{index}"]
+        messages.extend(
+            [
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": key,
+                            "type": "function",
+                            "function": {"name": name, "arguments": "{}"},
+                        }
+                        for key, name in zip(ids, ("program_events", "program_status"))
+                    ],
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": ids[0],
+                    "content": [
+                        {"type": "text", "text": f"events {index}: " + "x" * 5000},
+                        {**frame, "metadata": {"sampled_at": index}},
+                    ],
+                },
+                {"role": "tool", "tool_call_id": ids[1], "content": "running"},
+            ]
+        )
+    before = json.dumps(messages)
+    compacted, changed = request_messages("system", messages, 16000)
+    assert changed and len(json.dumps(compacted)) <= 16000
+    assert request in compacted
+    assert compacted[-4:] == messages[-4:]
+    converted = media.provider_messages(compacted)
+    calls = {c["id"] for m in converted for c in m.get("tool_calls", [])}
+    results = {m["tool_call_id"] for m in converted if m["role"] == "tool"}
+    assert calls == results
+    assert converted[-1]["role"] == "user"  # Provider-only tool image envelope.
+    assert json.dumps(messages) == before
+
+
+def test_tool_image_transport_does_not_duplicate_text_or_identical_pixels(tmp_path):
+    media = MediaStore(tmp_path)
+    frame = media.put(
+        png(2, 2, bytes([0] * 12)), "image/png", metadata={"sampled_at": 10}
+    )
+    messages = []
+    for index in range(2):
+        messages.extend(
+            [
+                {"role": "assistant", "tool_calls": [{"id": str(index)}]},
+                {
+                    "role": "tool",
+                    "tool_call_id": str(index),
+                    "content": [
+                        {"type": "text", "text": f"unique-tool-text-{index}"},
+                        {**frame, "metadata": {"sampled_at": 10 + index}},
+                    ],
+                },
+            ]
+        )
+    converted = media.provider_messages(messages)
+    serialized = json.dumps(converted)
+    assert serialized.count("unique-tool-text-0") == 1
+    assert serialized.count("unique-tool-text-1") == 1
+    assert serialized.count('"type": "image_url"') == 1
+    assert '"sampled_at": 10' in text_content(converted[2]["content"])
+    assert len(references(messages)) == 2  # Durable input is untouched.
+
+
 class ClosedLoopModel:
     """Deterministic model protocol harness, not a claim about real model skill."""
 

@@ -5,6 +5,7 @@ import json
 import os
 import socket
 import subprocess
+import sys
 import time
 import uuid
 
@@ -233,6 +234,33 @@ except ImportError:
     final = wait_job(client, submit(client, publish(client, source))["id"])
     assert final["exit_code"] == 0, events(client, final["id"])
     assert [e.get("text") for e in events(client, final["id"])].count("blocked") == 4
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux confinement regression")
+def test_linux_blocks_proc_metadata_changes_and_unix_sockets(host, tmp_path):
+    client, _, _ = host
+    marker = tmp_path / "private.txt"
+    marker.write_text("unchanged")
+    before_mode = marker.stat().st_mode
+    source = f"""import os
+import socket
+import subprocess
+for operation in [lambda: open('/proc/self/environ').read(),
+                  lambda: os.truncate({str(marker)!r}, 0),
+                  lambda: os.chmod({str(marker)!r}, 0o777),
+                  lambda: socket.socket(socket.AF_UNIX),
+                  lambda: subprocess.run(['/usr/bin/true'])]:
+    try:
+        operation()
+        raise RuntimeError('sandbox bypass')
+    except PermissionError:
+        print('blocked')
+"""
+    final = wait_job(client, submit(client, publish(client, source))["id"])
+    assert final["exit_code"] == 0, events(client, final["id"])
+    assert [e.get("text") for e in events(client, final["id"])].count("blocked") == 5
+    assert marker.read_text() == "unchanged"
+    assert marker.stat().st_mode == before_mode
 
 
 def test_unknown_command_requires_reconciliation_and_deduplicates(host):

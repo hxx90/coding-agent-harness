@@ -35,7 +35,7 @@ def test_patch_search_and_checklist_use_actual_project(tools):
     assert execute(tools, "glob", pattern="*.py")["files"] == ["main.py"]
     assert execute(tools, "grep", query="value")["matches"][0]["line"] == 1
     execute(tools, "read", path="main.py")
-    patch = "--- a/main.py\n+++ b/main.py\n@@ -1 +1 @@\n-value = 1\n+value = 2\n"
+    patch = "--- a/main.py\n+++ b/main.py\n@@ -1,1 +1,1 @@\n-value = 1\n+value = 2\n"
     assert execute(tools, "apply_patch", patch=patch)["changed"]
     assert (tools.settings.project / "main.py").read_text() == "value = 2\n"
     todos = [{"id": "test", "content": "Run tests", "status": "in_progress"}]
