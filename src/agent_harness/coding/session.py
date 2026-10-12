@@ -41,6 +41,7 @@ class CodingSession:
         child: bool = False,
         configure_tools: Callable[[ToolSet], None] | None = None,
     ) -> None:
+        settings = replace(settings, project=settings.project.expanduser().resolve())
         self.settings = settings
         self.model = model or Provider(
             settings.provider, MediaStore(settings.data_dir / "media")

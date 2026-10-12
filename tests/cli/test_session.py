@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 from conftest import answer, call, sse
@@ -38,6 +39,43 @@ def setup(tmp_path, model_server):
 
 def allow():
     return ({"tool": "*", "action": "allow"},)
+
+
+@pytest.mark.parametrize("spelling", ["symlink", "relative"])
+def test_sdk_project_paths_create_run_and_resume(
+    tmp_path, monkeypatch, model_server, spelling
+):
+    project = tmp_path / "project"
+    project.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(project, target_is_directory=True)
+    monkeypatch.chdir(tmp_path)
+    supplied = alias if spelling == "symlink" else Path("project")
+    url, requests, _ = model_server([answer("First"), answer("Resumed")])
+    settings = Settings(
+        supplied, tmp_path / "data", ProviderSettings(base_url=url, model="test")
+    )
+    session = CodingSession(settings)
+    assert session.settings.project == project.resolve()
+    assert settings.project == supplied  # Do not mutate the caller's settings.
+    assert session.run("Start").text == "First"
+    resumed = CodingSession(settings, session_id=session.id)
+    assert resumed.run("Continue").text == "Resumed"
+    assert len(requests) == 2
+
+
+def test_retargeted_project_alias_cannot_resume_another_project(tmp_path):
+    first, second, alias = (tmp_path / name for name in ("first", "second", "alias"))
+    first.mkdir()
+    second.mkdir()
+    alias.symlink_to(first, target_is_directory=True)
+    settings = Settings(alias, tmp_path / "data", ProviderSettings(model="test"))
+    session = CodingSession(settings)
+    alias.unlink()
+    alias.symlink_to(second, target_is_directory=True)
+    with pytest.raises(CodingError) as failure:
+        CodingSession(settings, session_id=session.id)
+    assert failure.value.code == "project_mismatch"
 
 
 def limited_answer(calls=None, *, reason="length"):
