@@ -167,7 +167,7 @@ def parse_unified_diff(patch_text: str) -> List[FilePatch]:
         if not file_patch.hunks:
             raise ToolExecutionError(
                 "patch_invalid",
-                "文件 Patch 缺少 @@ hunk：%s" % new_path,
+                f"文件 Patch 缺少带行号的 hunk：{new_path}。格式示例：@@ -1,1 +1,1 @@；裸 @@ 无效。",
                 recoverable=True,
             )
         patches.append(file_patch)
@@ -175,7 +175,7 @@ def parse_unified_diff(patch_text: str) -> List[FilePatch]:
     if not patches:
         raise ToolExecutionError(
             "patch_invalid",
-            "未找到标准 unified diff 文件头",
+            "未找到标准 unified diff 文件头。需要 --- a/path、+++ b/path 和带行号的 @@ -1,1 +1,1 @@；不接受 *** Begin Patch 格式。",
             recoverable=True,
         )
     paths = [item.path for item in patches]

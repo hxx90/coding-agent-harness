@@ -6,6 +6,19 @@ from agent_harness.errors import ToolExecutionError
 from agent_harness.patching import apply_file_patch, parse_unified_diff
 
 
+@pytest.mark.parametrize(
+    "patch",
+    [
+        "*** Begin Patch\n*** Update File: demo.py\n@@\n-one\n+two\n*** End Patch",
+        "--- a/demo.py\n+++ b/demo.py\n@@\n-one\n+two\n",
+    ],
+)
+def test_invalid_format_explains_numbered_unified_diff(patch):
+    with pytest.raises(ToolExecutionError) as error:
+        parse_unified_diff(patch)
+    assert "@@ -1,1 +1,1 @@" in str(error.value)
+
+
 def test_applies_standard_unified_diff():
     original = "one\ntwo\nthree\n"
     patch = """--- a/src/demo.py
