@@ -50,6 +50,8 @@ class Settings:
     mcp: Json = field(default_factory=dict, repr=False)
     skill_dirs: tuple[Path, ...] = ()
     robo_home: Path | None = None
+    # SDK retry allowance for consecutive truncated responses; 0 disables recovery.
+    output_limit_retries: int = 1
 
     def public(self) -> Json:
         data = asdict(self)

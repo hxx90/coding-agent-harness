@@ -41,6 +41,13 @@ class CodingSession:
         child: bool = False,
         configure_tools: Callable[[ToolSet], None] | None = None,
     ) -> None:
+        if (
+            type(settings.output_limit_retries) is not int
+            or settings.output_limit_retries < 0
+        ):
+            raise CodingError(
+                "configuration", "output_limit_retries must be a nonnegative integer"
+            )
         settings = replace(settings, project=settings.project.expanduser().resolve())
         self.settings = settings
         self.model = model or Provider(
@@ -363,19 +370,29 @@ class CodingSession:
                                 "complete response using shorter programs or targeted edits; "
                                 "do not continue or splice the rejected tool JSON. "
                                 "Earlier executions are unaffected; retain their normal "
-                                "status and reconciliation checks.",
+                                "status and reconciliation checks."
+                                + (
+                                    " This limit was hit again: split the work across several "
+                                    "tool calls. Create a smaller file first, then "
+                                    "extend it with further edit calls."
+                                    if output_limit_retries
+                                    else ""
+                                ),
                             },
                         ]
                     )
                     partial = []
                     self._save()
                     output_limit_retries += 1
-                    if output_limit_retries > 1:
+                    if output_limit_retries > self.settings.output_limit_retries:
                         raise CodingError(
                             "incomplete_response",
                             "Repeated model output limit; no tools from the rejected responses were executed",
                         )
                     continue
+                # Only consecutive truncations stop the run; a complete response
+                # in between already followed the shorter-response instruction.
+                output_limit_retries = 0
                 self.state["messages"].append(message)
                 partial = []
                 if completion.calls and completion.finish_reason not in {

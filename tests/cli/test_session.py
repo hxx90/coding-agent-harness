@@ -156,6 +156,70 @@ def test_repeated_output_limit_stops_and_resume_does_not_replay(setup):
     assert not any(message.get("tool_calls") for message in requests[2]["messages"])
 
 
+def test_separated_output_limits_each_get_one_recovery(setup):
+    rejected_call = call("write", {"path": "bad.txt", "content": "never"})
+    session, requests, events = setup(
+        [
+            limited_answer([rejected_call]),
+            answer("", [call("write", {"path": "a.txt", "content": "ok"}, "a")]),
+            limited_answer([rejected_call]),
+            answer("Finished"),
+        ],
+        permission_rules=allow(),
+    )
+    result = session.run("Write")
+    assert result.status == "completed" and result.text == "Finished"
+    assert len(requests) == 4
+    assert (session.settings.project / "a.txt").read_text() == "ok"
+    assert not (session.settings.project / "bad.txt").exists()
+    rejected = [event for event in events if event["type"] == "response_rejected"]
+    assert len(rejected) == 2
+
+
+@pytest.mark.parametrize("retries", [0, 1, 3])
+def test_configured_output_limit_retries_allow_bounded_consecutive_recoveries(
+    setup, retries
+):
+    rejected_call = call("write", {"path": "bad.txt", "content": "never"})
+    session, requests, events = setup(
+        [limited_answer([rejected_call])] * retries + [answer("Finished")],
+        permission_rules=allow(),
+        output_limit_retries=retries,
+    )
+    result = session.run("Write")
+    assert result.status == "completed" and len(requests) == retries + 1
+    assert not (session.settings.project / "bad.txt").exists()
+    if retries:
+        assert (
+            "split the work across several tool calls"
+            not in requests[1]["messages"][-1]["content"]
+        )
+    if retries > 1:
+        assert (
+            "split the work across several tool calls"
+            in requests[2]["messages"][-1]["content"]
+        )
+    session, requests, _ = setup(
+        [limited_answer([rejected_call])] * (retries + 1),
+        permission_rules=allow(),
+        output_limit_retries=retries,
+    )
+    result = session.run("Write")
+    assert result.status == "error" and len(requests) == retries + 1
+    assert not (session.settings.project / "bad.txt").exists()
+
+
+@pytest.mark.parametrize("retries", [-1, True, 1.5, "3", None, float("nan")])
+def test_invalid_output_limit_retries_fail_before_session_creation(tmp_path, retries):
+    settings = Settings(
+        tmp_path, tmp_path / "data", ProviderSettings(), output_limit_retries=retries
+    )
+    with pytest.raises(CodingError, match="output_limit_retries") as failure:
+        CodingSession(settings)
+    assert failure.value.code == "configuration"
+    assert not settings.data_dir.exists()
+
+
 @pytest.mark.parametrize("budget", [{"max_turns": 1}, {"max_tokens": 15}])
 def test_output_limit_recovery_respects_remaining_budget(setup, budget):
     session, requests, events = setup([limited_answer()], **budget)
