@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import ExitStack
 from datetime import UTC, datetime
+import json
 import logging
 import math
 from pathlib import Path
 import struct
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 import zlib
 
@@ -29,7 +31,9 @@ from vibe.core.hardware import (
     VerificationReport,
     VerificationStatus,
 )
+from vibe.hardware_sim._target_motion import run_target_motion
 from vibe.hardware_sim._viewer import ViewerProcess
+from vibe.hardware_sim.models import TargetMoveParameters, TargetMoveReport
 
 MUJOCO_PANDA_DEVICE_ID = "mujoco-panda-1"
 _CARTESIAN_DIMENSIONS = 3
@@ -37,6 +41,9 @@ _IMAGE_DIMENSIONS = 3
 _RGB_CHANNELS = 3
 _MAX_ACTION_STEPS = 200
 _LIFT_HEIGHT_THRESHOLD_M = 0.04
+_STACK_STABLE_CYCLES = 20
+_STACK_LINEAR_SPEED_M_S = 0.01
+_STACK_ANGULAR_SPEED_RAD_S = 0.1
 _CAPTURE_CAMERA = "sideview"
 
 logger = logging.getLogger(__name__)
@@ -53,9 +60,28 @@ class RobosuiteSimulatorAdapter:
         adapter_id: str = "robosuite",
         show_viewer: bool = True,
         control_frequency: int = 20,
+        observation_mode: Literal["privileged", "rgbd"] = "privileged",
+        geometry_library: Literal["off", "h1-v8-v9"] = "off",
+        seed: int | None = None,
         evidence_dir: Path | None = None,
         recording_dir: Path | None = None,
+        max_control_cycles: int | None = None,
+        task: Literal["Lift", "Stack"] = "Lift",
     ) -> None:
+        if task not in {"Lift", "Stack"}:
+            raise ValueError("Only Lift and Stack are supported")
+        if task == "Stack" and geometry_library != "off":
+            raise ValueError("Stack pilot requires H1 off")
+        self._task = task
+        self._stack_stable_cycles = 0
+        self._support_perception: dict[str, Any] = {}
+        if geometry_library != "off" and observation_mode != "rgbd":
+            raise ValueError("H1 requires RGB-D observation mode")
+        self._observation_mode = observation_mode
+        self._geometry_library = geometry_library
+        self._seed = seed
+        self._perception_sequence = -1
+        self._perception: dict[str, Any] = {}
         self._adapter_id = adapter_id
         self._show_viewer = show_viewer
         self._control_frequency = control_frequency
@@ -72,6 +98,14 @@ class RobosuiteSimulatorAdapter:
         self._armed = False
         self._stopped = False
         self._sequence = 0
+        if max_control_cycles is not None and (
+            isinstance(max_control_cycles, bool) or max_control_cycles <= 0
+        ):
+            raise ValueError("Control cycle limit must be positive")
+        self._max_control_cycles = max_control_cycles
+        self._control_cycles_used = 0
+        self._cleanup_step = False
+        self._last_target_move: TargetMoveReport | None = None
 
     @property
     def adapter_id(self) -> str:
@@ -83,7 +117,7 @@ class RobosuiteSimulatorAdapter:
                 device_id=MUJOCO_PANDA_DEVICE_ID,
                 adapter_id=self.adapter_id,
                 manufacturer="Franka Emika",
-                model="Panda (Robosuite Lift)",
+                model=f"Panda (Robosuite {self._task})",
                 kind="robot_arm",
                 transport=DeviceTransport.SIMULATOR,
                 actions=[
@@ -108,6 +142,26 @@ class RobosuiteSimulatorAdapter:
                         },
                     ),
                     ActionCapability(
+                        name="move_to",
+                        description=(
+                            "Track a fixed world-frame XYZ target in meters with fresh "
+                            "proprioceptive feedback every 20Hz control cycle. Defaults: "
+                            "72 total cycles, 30 seconds, 20 consecutive cycles within "
+                            "tolerance_xyz=[0.006,0.006,0.008]m. No H1 required. "
+                            "Return a complete CommandReceipt dict, identical for "
+                            "move_to(...) and act('move_to', ...). Read "
+                            "receipt['result']['motion']['reached']; there is no "
+                            "top-level receipt['motion']. result.motion contains "
+                            "reached, reason, error_xyz, "
+                            "error_max_m, cycles, settled_cycles and elapsed_seconds. "
+                            "Unreached returns FAILED and aborts the policy before "
+                            "later stages. reached is control success, not lift success."
+                        ),
+                        parameters_schema=TargetMoveParameters.model_json_schema()[
+                            "properties"
+                        ],
+                    ),
+                    ActionCapability(
                         name="gripper_open", description="Open the Panda gripper"
                     ),
                     ActionCapability(
@@ -116,26 +170,47 @@ class RobosuiteSimulatorAdapter:
                 ],
                 verifications=[
                     VerificationCapability(
-                        name="lift_object",
+                        name="stack_objects"
+                        if self._task == "Stack"
+                        else "lift_object",
                         description=(
-                            "Verify from observed contact and scene state that the "
+                            "Verify red cube stacked on green cube, released, with "
+                            "official Stack success and low object velocities for "
+                            "20 consecutive control cycles (1 simulation second)."
+                            if self._task == "Stack"
+                            else "Verify from observed contact and scene state that the "
                             "cube is grasped and lifted"
                         ),
                         applicable_actions=[
                             "home",
                             "move_cartesian",
+                            "move_to",
                             "gripper_open",
                             "gripper_close",
                         ],
                     )
                 ],
                 metadata={
-                    "environment": "Lift",
+                    "environment": self._task,
+                    "default_verification": "stack_objects"
+                    if self._task == "Stack"
+                    else "lift_object",
                     "control_mode": "osc_pose",
                     "dof": 7,
                     "has_viewer": self._show_viewer,
                     "records_video": self._recording_dir is not None,
                     "is_physical": False,
+                    "observation_mode": self._observation_mode,
+                    "geometry_library": self._geometry_library,
+                    "geometry_notes": self._geometry_notes(),
+                    "control_cycle_limit": self._max_control_cycles,
+                    "control_cycle_budget": "All motion/gripper cycles share this session limit; stop cleanup is separate. home/connect/arm do not refill it.",
+                    "perception_contract": "RGB-D: state.perception contains red-rgbd-v1 points (max 128), centroid, ok/count, metric world-z-up. Check ok before motion. end_effector_position is robot proprioception. delta_xyz is normalized per-step control (0.05 m scale), not a meter target."
+                    + (
+                        " Stack adds state.support_perception: green-rgbd-v1 points and centroid of the green support cube, same camera/time/frame/units. Both clouds use RGB colors and aligned depth only. Task: release the red cube on top of the green cube, retreat and allow settling; verify stack_objects."
+                        if self._task == "Stack"
+                        else ""
+                    ),
                 },
             )
         ]
@@ -171,16 +246,17 @@ class RobosuiteSimulatorAdapter:
         self, device_id: str, criterion: str, parameters: dict[str, JsonValue]
     ) -> VerificationReport:
         self._validate_connected(device_id)
-        if criterion != "lift_object":
+        if criterion == "stack_objects" and self._task == "Stack":
+            return self._verify_stack()
+        if criterion != "lift_object" or self._task != "Lift":
             raise RobosuiteSimulatorError(
                 f"Unsupported MuJoCo verification criterion: {criterion}"
             )
         del parameters
         snapshot = self._snapshot(capture_evidence=True)
-        state = snapshot.state
         evidence_ids = [item.evidence_id for item in snapshot.evidence]
-        grasped = state["grasped"] is True
-        cube_height = state["cube_height_above_table_m"]
+        grasped = self._is_grasped()
+        cube_height = self._cube_height_above_table(self._float_values("cube_pos"))
         lifted = (
             isinstance(cube_height, int | float)
             and cube_height > _LIFT_HEIGHT_THRESHOLD_M
@@ -231,6 +307,61 @@ class RobosuiteSimulatorAdapter:
             evidence_ids=evidence_ids,
         )
 
+    def _stack_settled(self) -> bool:
+        """Evaluator only: never expose object state to the actor's perception."""
+        environment = self._require_environment()
+        if not environment._check_success():
+            return False
+        for cube in (environment.cubeA, environment.cubeB):
+            velocity = environment.sim.data.get_joint_qvel(cube.joints[0])
+            if math.dist(velocity[:3], (0, 0, 0)) >= _STACK_LINEAR_SPEED_M_S:
+                return False
+            if math.dist(velocity[3:], (0, 0, 0)) >= _STACK_ANGULAR_SPEED_RAD_S:
+                return False
+        return True
+
+    def _verify_stack(self) -> VerificationReport:
+        snapshot = self._snapshot(capture_evidence=True)
+        evidence_ids = [item.evidence_id for item in snapshot.evidence]
+        official = bool(self._require_environment()._check_success())
+        stable = (
+            self._stack_stable_cycles >= _STACK_STABLE_CYCLES and self._stack_settled()
+        )
+        return VerificationReport(
+            device_id=MUJOCO_PANDA_DEVICE_ID,
+            criterion="stack_objects",
+            status=VerificationStatus.PASSED
+            if official and stable
+            else VerificationStatus.FAILED,
+            observed_at=datetime.now(UTC),
+            snapshot_sequence=self._sequence,
+            checks=[
+                VerificationCheck(
+                    name="official_stack_released",
+                    status=VerificationStatus.PASSED
+                    if official
+                    else VerificationStatus.FAILED,
+                    observed=official,
+                    expected="true",
+                    evidence_ids=evidence_ids,
+                ),
+                VerificationCheck(
+                    name="stable_stack",
+                    status=VerificationStatus.PASSED
+                    if stable
+                    else VerificationStatus.FAILED,
+                    observed=self._stack_stable_cycles,
+                    expected="20 consecutive cycles: official Stack success, linear speed <0.01 m/s and angular speed <0.1 rad/s for both cubes",
+                    evidence_ids=evidence_ids,
+                ),
+            ],
+            summary="Red cube released and stably stacked on green."
+            if official and stable
+            else "Stack postconditions not satisfied.",
+            evidence=snapshot.evidence,
+            evidence_ids=evidence_ids,
+        )
+
     async def execute(self, command: HardwareCommand) -> CommandReceipt:
         self._validate_connected(command.device_id)
         if not self._armed:
@@ -238,13 +369,23 @@ class RobosuiteSimulatorAdapter:
         started_at = datetime.now(UTC)
         result = await self._apply_action(command.action, command.parameters)
         self._sequence += 1
+        failed = (
+            command.action == "move_to"
+            and self._last_target_move is not None
+            and not self._last_target_move.reached
+        )
         return CommandReceipt(
             command_id=command.command_id,
             device_id=command.device_id,
-            status=CommandStatus.COMPLETED,
+            status=CommandStatus.FAILED if failed else CommandStatus.COMPLETED,
             started_at=started_at,
             completed_at=datetime.now(UTC),
             result=result,
+            error=(
+                f"move_to did not reach target: {self._last_target_move.reason}"
+                if failed and self._last_target_move is not None
+                else None
+            ),
         )
 
     async def stop(self, device_id: str, reason: str) -> StopReceipt:
@@ -254,7 +395,11 @@ class RobosuiteSimulatorAdapter:
             self._stopped = True
             self._sequence += 1
             if self._environment is not None:
-                self._step_once(self._zero_action())
+                self._cleanup_step = True
+                try:
+                    self._step_once(self._zero_action())
+                finally:
+                    self._cleanup_step = False
         self._finish_recording()
         return StopReceipt(
             device_id=device_id,
@@ -287,9 +432,12 @@ class RobosuiteSimulatorAdapter:
             raise RobosuiteSimulatorError(
                 "Robosuite is not installed; run `uv sync --extra simulator`"
             ) from exc
-        camera_enabled = any((self._evidence_dir, self._recording_dir))
+        camera_enabled = self._observation_mode == "rgbd" or any((
+            self._evidence_dir,
+            self._recording_dir,
+        ))
         environment = robosuite.make(
-            env_name="Lift",
+            env_name=self._task,
             robots="Panda",
             # The native Viewer renders a state mirror in its own process.
             # Robosuite only needs an offscreen context when evidence or MP4
@@ -298,6 +446,8 @@ class RobosuiteSimulatorAdapter:
             has_offscreen_renderer=camera_enabled,
             use_camera_obs=camera_enabled,
             camera_names=_CAPTURE_CAMERA,
+            camera_depths=self._observation_mode == "rgbd",
+            seed=self._seed,
             camera_heights=384,
             camera_widths=384,
             ignore_done=True,
@@ -307,14 +457,22 @@ class RobosuiteSimulatorAdapter:
         )
         self._environment = environment
         self._observation = environment.reset()
+        self._stack_stable_cycles = 0
         self._home_cube_position = self._float_values("cube_pos")
 
     async def _apply_action(
         self, action_name: str, parameters: dict[str, JsonValue]
     ) -> dict[str, JsonValue]:
         match action_name:
+            case "move_to":
+                report = await self._move_to(
+                    TargetMoveParameters.model_validate(parameters)
+                )
+                return {"motion": report.model_dump(mode="json")}
             case "home":
                 self._observation = self._require_environment().reset()
+                self._stack_stable_cycles = 0
+                self._perception_sequence = -1
                 self._home_cube_position = self._float_values("cube_pos")
                 self._render()
             case "move_cartesian":
@@ -351,8 +509,92 @@ class RobosuiteSimulatorAdapter:
             await asyncio.sleep(delay)
 
     def _step_once(self, action: Any) -> None:
+        if not self._cleanup_step and self._cycles_remaining() == 0:
+            raise RobosuiteSimulatorError("Session control cycle budget exhausted")
         self._observation, *_ = self._require_environment().step(action)
+        if self._task == "Stack":
+            self._stack_stable_cycles = (
+                self._stack_stable_cycles + 1 if self._stack_settled() else 0
+            )
+        if not self._cleanup_step:
+            self._control_cycles_used += 1
+        self._perception_sequence = -1
         self._render()
+
+    def _cycles_remaining(self) -> int | None:
+        if self._max_control_cycles is None:
+            return None
+        return max(0, self._max_control_cycles - self._control_cycles_used)
+
+    def _end_effector_position(self) -> tuple[float, float, float]:
+        values = self._float_values("robot0_eef_pos")
+        if len(values) != _CARTESIAN_DIMENSIONS or not all(map(math.isfinite, values)):
+            raise RobosuiteSimulatorError("Invalid end-effector proprioception")
+        return (values[0], values[1], values[2])
+
+    def _world_delta_action(self, error: tuple[float, float, float]) -> Any:
+        import numpy as np
+
+        controller = (
+            self
+            ._require_environment()
+            .robots[0]
+            .composite_controller.part_controllers["right"]
+        )
+        if controller.input_type != "delta":
+            raise RobosuiteSimulatorError("move_to requires the delta OSC controller")
+        delta = np.asarray(error)
+        if controller.input_ref_frame == "base":
+            delta = controller.origin_ori.T @ delta
+        elif controller.input_ref_frame != "world":
+            raise RobosuiteSimulatorError("Unsupported OSC reference frame")
+        action = self._zero_action()
+        action[:3] = np.clip(delta / 0.05, -1.0, 1.0)
+        return action
+
+    async def _move_to(self, request: TargetMoveParameters) -> TargetMoveReport:
+        with ExitStack() as stack:
+            path = None
+            trace = None
+            if self._evidence_dir is not None:
+                self._evidence_dir.mkdir(parents=True, exist_ok=True)
+                path = self._evidence_dir / f"motion-{uuid4().hex}.jsonl"
+                trace = stack.enter_context(path.open("w"))
+
+            async def advance(error: tuple[float, float, float]) -> None:
+                action = self._world_delta_action(error)
+                self._step_once(action)
+                if trace is not None:
+                    trace.write(
+                        json.dumps({
+                            "session_cycle": self._control_cycles_used,
+                            "target_xyz": request.target_xyz,
+                            "position_xyz": self._end_effector_position(),
+                            "delta_xyz": [float(v) for v in action[:3]],
+                        })
+                        + "\n"
+                    )
+                    trace.flush()
+                await asyncio.sleep(
+                    1 / self._control_frequency if self._show_viewer else 0
+                )
+
+            def finish(report: TargetMoveReport) -> None:
+                self._last_target_move = report
+                if not report.reached:
+                    # Fail closed even if a direct adapter caller ignores the receipt.
+                    self._armed = False
+
+            return await run_target_motion(
+                request,
+                position=self._end_effector_position,
+                advance=advance,
+                cycles_used=lambda: self._control_cycles_used,
+                cycles_remaining=self._cycles_remaining,
+                stopped=lambda: self._stopped,
+                finish=finish,
+                trace_uri=path.resolve().as_uri() if path is not None else None,
+            )
 
     def _render(self) -> None:
         if self._environment is None:
@@ -436,9 +678,9 @@ class RobosuiteSimulatorAdapter:
     def _state(self, mode: str) -> dict[str, Any]:
         end_effector_position = self._float_values("robot0_eef_pos")
         cube_position = self._float_values("cube_pos")
-        return {
+        state = {
             "mode": mode,
-            "environment": "Lift",
+            "environment": self._task,
             "viewer": self._viewer is not None and self._viewer.is_running,
             "joint_positions": self._float_values("robot0_joint_pos"),
             "end_effector_position": end_effector_position,
@@ -457,7 +699,87 @@ class RobosuiteSimulatorAdapter:
                 if self._recording_path is not None
                 else None
             ),
+            "control_cycles_used": self._control_cycles_used,
+            "control_cycles_remaining": self._cycles_remaining(),
+            "last_target_move": (
+                self._last_target_move.model_dump(mode="json")
+                if self._last_target_move is not None
+                else None
+            ),
         }
+
+        if self._observation_mode == "rgbd":
+            for key in (
+                "cube_position",
+                "grasped",
+                "cube_height_above_table_m",
+                "gripper_to_cube_distance_m",
+                "cube_displacement_from_home_m",
+            ):
+                state.pop(key)
+            state["perception"] = self._camera_perception()
+            if self._task == "Stack":
+                state["support_perception"] = self._support_perception
+        return state
+
+    def _geometry_notes(self) -> str | None:
+        if self._geometry_library == "off":
+            return None
+        from vibe.core.hardware._geometry import h1_description
+
+        return h1_description()
+
+    def _camera_perception(self) -> dict[str, Any]:
+        if self._perception_sequence == self._sequence:
+            return self._perception
+        import numpy as np
+
+        from vibe.hardware_sim._perception import (
+            green_point_cloud,
+            metric_camera,
+            red_point_cloud,
+        )
+
+        simulation = self._require_environment().sim
+        rgb = self._camera_image()
+        if rgb is None:
+            raise RobosuiteSimulatorError("RGB-D camera returned no RGB frame")
+        raw_depth = self._observation[f"{_CAPTURE_CAMERA}_depth"][::-1]
+        depth, intrinsic, pose = metric_camera(simulation, _CAPTURE_CAMERA, raw_depth)
+        result = red_point_cloud(rgb, depth, intrinsic, pose)
+        result.update(
+            sequence=self._sequence,
+            observed_at=datetime.now(UTC).isoformat(),
+            intrinsics=intrinsic.tolist(),
+            camera_to_world=pose.tolist(),
+            image_origin="top-left",
+            depth_convention="optical-z-meters",
+        )
+        if self._task == "Stack":
+            self._support_perception = green_point_cloud(rgb, depth, intrinsic, pose)
+            self._support_perception.update({
+                key: result[key]
+                for key in (
+                    "sequence",
+                    "observed_at",
+                    "intrinsics",
+                    "camera_to_world",
+                    "image_origin",
+                    "depth_convention",
+                )
+            })
+        if self._evidence_dir is not None:
+            self._evidence_dir.mkdir(parents=True, exist_ok=True)
+            path = self._evidence_dir / f"rgbd-{self._sequence}-{uuid4().hex}.npz"
+            np.savez_compressed(
+                path, rgb=rgb, depth=depth, intrinsics=intrinsic, camera_to_world=pose
+            )
+            result["rgbd_uri"] = path.resolve().as_uri()
+            if self._task == "Stack":
+                self._support_perception["rgbd_uri"] = result["rgbd_uri"]
+        self._perception = result
+        self._perception_sequence = self._sequence
+        return result
 
     def _camera_image(self) -> Any | None:
         image = self._observation.get(f"{_CAPTURE_CAMERA}_image")
@@ -506,7 +828,10 @@ class RobosuiteSimulatorAdapter:
         environment = self._require_environment()
         return bool(
             environment._check_grasp(
-                gripper=environment.robots[0].gripper, object_geoms=environment.cube
+                gripper=environment.robots[0].gripper,
+                object_geoms=environment.cubeA
+                if self._task == "Stack"
+                else environment.cube,
             )
         )
 
@@ -535,6 +860,10 @@ class RobosuiteSimulatorAdapter:
             self._viewer = None
         self._viewer_failed = False
         self._environment = None
+        self._perception_sequence = -1
+        self._perception = {}
+        self._support_perception = {}
+        self._stack_stable_cycles = 0
         self._observation = {}
         self._home_cube_position = []
         self._connected = False

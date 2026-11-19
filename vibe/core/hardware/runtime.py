@@ -73,6 +73,7 @@ class HardwareRuntime:
         *,
         adapters: list[DeviceAdapter],
         trace_dir: Path | None = None,
+        task_action_limit: int | None = None,
         trace_event_limit: int = 200,
         global_stop_timeout_seconds: float = 10.0,
     ) -> None:
@@ -82,6 +83,8 @@ class HardwareRuntime:
             )
         if global_stop_timeout_seconds <= 0:
             raise ValueError("global_stop_timeout_seconds must be greater than zero")
+        self._task_action_limit = task_action_limit
+        self._task_actions = 0
         self._adapters = {adapter.adapter_id: adapter for adapter in adapters}
         self._device_adapters: dict[str, DeviceAdapter] = {}
         self._manifests: dict[str, DeviceCapabilityManifest] = {}
@@ -426,6 +429,14 @@ class HardwareRuntime:
 
     async def execute(self, command: HardwareCommand, *, run_id: str) -> CommandReceipt:
         self._validate_run_id(run_id)
+        if (
+            self._task_action_limit is not None
+            and self._task_actions >= self._task_action_limit
+        ):
+            raise HardwareRuntimeError(
+                "Task action budget exhausted", code="task_action_limit"
+            )
+        self._task_actions += 1
         adapter = await self._adapter_for(command.device_id)
         rejection, snapshot_sequence = await self._reserve_command(command)
         if rejection is not None:
@@ -893,6 +904,76 @@ class HardwareRuntime:
     def read_trace(self, run_id: str) -> RunTrace:
         self._validate_run_id(run_id)
         return RunTrace(run_id=run_id, events=list(self._traces.get(run_id, ())))
+
+    async def recovery_observation(self) -> dict[str, object]:
+        """Fresh adapter observations only; no verifier truth or action replay."""
+        observations: dict[str, object] = {}
+        for device_id in sorted(self._connected):
+            snapshot = await self.observe(device_id, run_id="generation-recovery")
+            observations[device_id] = snapshot.model_dump(mode="json")
+        return observations
+
+    async def bounded_cleanup(self) -> dict[str, object]:
+        """No model calls or motion: one score, stop and release per connection.
+
+        Total allowance 30 seconds, each operation at most 10 seconds. Scoring
+        here is independent evidence, separate from actor-requested verification.
+        """
+        results: dict[str, object] = {"actions": self._task_actions, "devices": {}}
+        devices: dict[str, object] = {}
+        results["devices"] = devices
+        try:  # noqa: PLR1702 - bounded cleanup independently attempts each safety operation
+            async with asyncio.timeout(30):
+                for device_id in sorted(self._connected):
+                    item: dict[str, object] = {}
+                    devices[device_id] = item
+                    lease = self._leases.get(device_id) or self._released_leases.get(
+                        device_id
+                    )
+                    for operation in ("verify", "stop", "release"):
+                        try:
+                            async with asyncio.timeout(10):
+                                if operation == "verify":
+                                    manifest = self._manifests[device_id]
+                                    declared = manifest.metadata.get(
+                                        "default_verification"
+                                    )
+                                    criterion = (
+                                        declared
+                                        if isinstance(declared, str)
+                                        and any(
+                                            v.name == declared
+                                            for v in manifest.verifications
+                                        )
+                                        else "lift_object"
+                                    )
+                                    report = await self.verify(
+                                        device_id,
+                                        criterion=criterion,
+                                        run_id="bounded-cleanup",
+                                    )
+                                    item[operation] = report.model_dump(mode="json")
+                                elif operation == "stop":
+                                    receipt = await self.stop(
+                                        device_id,
+                                        reason="bounded task cleanup",
+                                        run_id="bounded-cleanup",
+                                    )
+                                    item[operation] = receipt.model_dump(mode="json")
+                                elif lease is not None:
+                                    await self.release_lease(
+                                        device_id,
+                                        lease_id=lease.lease_id,
+                                        run_id="bounded-cleanup",
+                                    )
+                                    item[operation] = True
+                                else:
+                                    item[operation] = "no_lease"
+                        except Exception as exc:
+                            item[operation] = {"error": type(exc).__name__}
+        except TimeoutError:
+            results["error"] = "cleanup_timeout"
+        return results
 
     async def aclose(self) -> None:
         async with self._lock:

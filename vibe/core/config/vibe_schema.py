@@ -42,6 +42,7 @@ from vibe.core.config.layers.admin import AdminConfigLayer
 from vibe.core.config.models import (
     ConnectorConfig,
     ExperimentsConfig,
+    GenerationConfig,
     MCPServer,
     MissingAPIKeyError,
     ModelConfig,
@@ -581,6 +582,9 @@ class VibeConfigSchema(ConfigSchema):
     enable_notifications: Annotated[bool, WithReplaceMerge()] = True
     experimental_enable_tab_status: Annotated[bool, WithReplaceMerge()] = True
     enable_system_trust_store: Annotated[bool, WithReplaceMerge()] = False
+    generation: Annotated[GenerationConfig, WithReplaceMerge()] = Field(
+        default_factory=GenerationConfig
+    )
     api_timeout: Annotated[float, WithReplaceMerge()] = DEFAULT_API_TIMEOUT
     api_retry_max_elapsed_time: Annotated[float, WithReplaceMerge()] = (
         DEFAULT_API_RETRY_MAX_ELAPSED_TIME

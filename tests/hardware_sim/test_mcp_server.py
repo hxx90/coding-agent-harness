@@ -82,3 +82,55 @@ async def test_runtime_controls_mujoco_through_stdio_mcp(tmp_path: Path) -> None
     recordings = list(recording_dir.glob("*.mp4"))
     assert len(recordings) == 1
     assert recordings[0].stat().st_size > 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(30)
+async def test_rgbd_h1_is_available_through_mcp_and_bounded_policy(
+    tmp_path: Path,
+) -> None:
+    from vibe.core.hardware import HardwarePolicyRunner
+
+    pool = MCPConnectionPool()
+    adapter = MCPStdioDeviceAdapter(
+        adapter_id="robo-mujoco",
+        command=[sys.executable, "-m", "vibe.hardware_sim.entrypoint"],
+        pool=pool,
+        env={
+            "ROBO_SIM_HEADLESS": "1",
+            "ROBO_SIM_OBSERVATION_MODE": "rgbd",
+            "ROBO_SIM_GEOMETRY_LIBRARY": "h1-v8-v9",
+            "ROBO_SIM_SEED": "117",
+            "ROBO_EVIDENCE_DIR": str(tmp_path / "evidence"),
+        },
+        cwd=str(Path.cwd()),
+        startup_timeout_sec=20,
+        tool_timeout_sec=20,
+    )
+    runtime = HardwareRuntime(adapters=[adapter], trace_dir=tmp_path)
+    try:
+        manifest = (await runtime.discover())[0]
+        assert "resting_geometry" in str(manifest.metadata["geometry_notes"])
+        await runtime.connect(MUJOCO_PANDA_DEVICE_ID, run_id="h1-mcp")
+        lease = await runtime.acquire_lease(
+            MUJOCO_PANDA_DEVICE_ID, owner="test", run_id="h1-mcp"
+        )
+        await runtime.arm(
+            MUJOCO_PANDA_DEVICE_ID, lease_id=lease.lease_id, run_id="h1-mcp"
+        )
+        result = await HardwarePolicyRunner(
+            runtime, artifact_dir=tmp_path / "policies"
+        ).run(
+            's = observe()\ng = resting_geometry(s["state"]["perception"]["points"])\nprint(g["ok"])\nverify("lift_object")',
+            device_id=MUJOCO_PANDA_DEVICE_ID,
+            lease_id=lease.lease_id,
+            run_id="h1-mcp",
+        )
+        assert result.stdout == ["true"]
+        assert result.geometry_library == "h1-v8-v9"
+        assert result.task_outcome == "failed"
+        assert "cube_position" not in result.snapshot.state
+        assert sum(step.kind == "capability" for step in result.steps) == 1
+    finally:
+        await runtime.aclose()
+        await pool.aclose()

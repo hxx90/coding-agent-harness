@@ -381,8 +381,40 @@ default_agent = "plan"
 
 ### Robo Hardware Harness
 
+The simulator defaults to Lift. Set `ROBO_SIM_TASK=Stack` for the experimental
+red-on-green stacking scene, H1 off. RGB-D `state.perception` describes red;
+`state.support_perception` describes green in the same metric world frame.
+Use the advertised `stack_objects` verifier: released stack stable for 20 cycles.
+See `docs/robo-stack-pilot.md`.
+
+The real agent loop rejects truncated generations before tool dispatch.
+For bounded Lift sessions, `[generation] enabled=true` adds shared request/token/time/action limits;
+`limit_tokens=false` removes harness input/output token quotas and implicit output caps,
+while preserving request/time/action limits, audit and safety cleanup. With no explicit
+caller cap, the OpenAI-compatible provider receives no `max_tokens` field; service defaults apply.
+`recover_once=true` permits at most one fresh regeneration before dispatch, after observing
+current device state. Both switches default false; the completeness guard is always active.
+Policy execution failures and cancellation never trigger automatic action replay.
+See `docs/robo-cli-generation-recovery.md` for accounting and separate safety cleanup.
+
+Policy actions return the full CommandReceipt dictionary: for `move_to(...)` or
+`act("move_to", ...)`, read `receipt["result"]["motion"]["reached"]`, not
+`receipt["motion"]`. `verify()` instead returns a VerificationReport with top-level
+`status`. A reached motion target does not establish task success.
+
 Robo exposes five model-facing hardware tools: `robo_devices`, `robo_observe`,
-`robo_run_policy`, `robo_verify`, and `robo_stop`. All task-changing motion must be
+`robo_run_policy`, `robo_verify`, and `robo_stop`. Experimental RGB-D Lift can
+advertise the fixed `h1-v8-v9` geometry library in the device Manifest; see
+`docs/robo-h1-lift-runbook.md` for simulator MCP settings and paired smoke.
+The helper is read-only and cannot establish task success.
+MuJoCo also advertises `move_to` for bounded fixed-target, per-cycle feedback,
+independently of H1. Unreached targets fail the command and abort later policy
+stages; `result.motion.reached` is control success only. The original
+`move_cartesian` remains a repeated-delta interface. Optional
+`ROBO_SIM_MAX_CONTROL_CYCLES` bounds all session motion, including gripper steps;
+stop cleanup is separate. See `docs/robo-target-motion.md` for the return contract.
+
+All task-changing motion must be
 expressed as one bounded Python policy passed to `robo_run_policy`; the compatibility
 implementations for single commands and sequences are hidden from the model. All motion
 goes through the session-owned `HardwareRuntime`; do not call a vendor motion tool directly.

@@ -1,0 +1,11 @@
+{
+  "version": "h1-v8-v9",
+  "bundle_sha256": "5ff54ea07319e6e6a069a1274abd4c2f9c7a35ceb795c49f69ddcaaf8675bee8",
+  "bp_commit": "efb3bde0be231b1af1e93e33d9d36fb35b15514a",
+  "source": "/workspace/hanyu/roboworld-bench/runtime/capx-rsi-v8-main.19bcac78/run/H1.json",
+  "replication_report": "/workspace/hanyu/roboworld-bench/runtime/capx-rsi-v9-replication.a8a6c174/run/final-report.json",
+  "files": {
+    "capability.py": "41213b8ef123f121f97cd9cf6e8b8f73a8ced3717d2858482596b9f54138b0b3",
+    "CAPABILITY.md": "826b933d772e1b496c2c3ed5a6ec458a6c194003c4e765b6d7b6649f4f3386bb"
+  }
+}

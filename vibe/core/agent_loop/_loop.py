@@ -21,6 +21,11 @@ from uuid import uuid4
 
 from pydantic import BaseModel, JsonValue, ValidationError
 
+from vibe.core.agent_loop._generation import (
+    GenerationControl,
+    IncompleteGenerationError,
+    validate_generation,
+)
 from vibe.core.agent_loop._request_broker import InteractionRequestBroker
 from vibe.core.agent_loop._title_cadence import TitleCadence, TitleGenTicket
 from vibe.core.agent_loop_hooks import AgentLoopHooksMixin, PostToolFinalization
@@ -621,6 +626,7 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
         )
         self._max_turns = max_turns
         self._max_price = max_price
+        self.generation = GenerationControl(self.config.generation)
         self._max_tokens = max_tokens
         self._max_session_tokens = max_session_tokens
         self._plan_session = PlanSession()
@@ -1529,7 +1535,9 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
             provider=provider,
             on_retry=self.notice_retry,
             timeout=config.api_timeout,
-            retry_max_elapsed_time=config.api_retry_max_elapsed_time,
+            retry_max_elapsed_time=0
+            if config.generation.enabled
+            else config.api_retry_max_elapsed_time,
             connect_timeout=config.api_connect_timeout,
             write_timeout=config.api_write_timeout,
             pool_timeout=config.api_pool_timeout,
@@ -1657,7 +1665,15 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
             self._clean_message_history()
             self.checkpoint_recorder.create_checkpoint()
             try:
-                async with agent_span(model=model_name, session_id=self.session_id):
+                self.generation.start()
+                async with (
+                    asyncio.timeout(
+                        self.config.generation.max_seconds
+                        if self.config.generation.enabled
+                        else None
+                    ),
+                    agent_span(model=model_name, session_id=self.session_id),
+                ):
                     async for event in self._conversation_loop(
                         msg,
                         client_message_id=client_message_id,
@@ -1672,6 +1688,9 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
             finally:
                 self.checkpoint_recorder.seal_turn()
         finally:
+            if self.config.generation.enabled:
+                cleanup = await self.hardware_runtime.bounded_cleanup()
+                self.generation.audit("cleanup", result=cleanup)
             self._active_turn = None
 
     @property
@@ -1938,6 +1957,10 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
                 pass
 
     async def _run_compaction(self) -> AsyncGenerator[BaseEvent]:
+        if self.config.generation.enabled:
+            raise RuntimeError(
+                "Bounded task cannot compact or start auxiliary model calls"
+            )
         # Auto/reactive compaction: emit boundary events, compact, report status.
         old_tokens = self.stats.context_tokens
         threshold = self.config.get_active_model().auto_compact_threshold
@@ -2531,13 +2554,42 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
         return None
 
     async def _perform_llm_turn(self) -> AsyncGenerator[BaseEvent, None]:
-        if self.enable_streaming:
-            async for event in self._stream_assistant_events():
-                yield event
-        else:
-            assistant_event = await self._get_assistant_event()
-            if assistant_event.content:
-                yield assistant_event
+        # This try block ends before any tool dispatch. Never move execution
+        # into it: runtime failures must not regenerate/replay an action batch.
+        while True:
+            history_length = len(self.messages)
+            try:
+                if self.enable_streaming:
+                    async for event in self._stream_assistant_events():
+                        yield event
+                else:
+                    assistant_event = await self._get_assistant_event()
+                    if assistant_event.content:
+                        yield assistant_event
+                break
+            except (IncompleteGenerationError, IncompleteStreamError) as exc:
+                self.generation.audit("generation_rejected", reason=str(exc))
+                if not (
+                    self.config.generation.enabled
+                    and self.config.generation.recover_once
+                    and not self.generation.recovery_used
+                ):
+                    raise
+                if len(self.messages) > history_length:
+                    self.messages.reset(list(self.messages[:history_length]))
+                self.generation.recovery_used = True
+                state = await self.hardware_runtime.recovery_observation()
+                self.generation.audit("recovery_attempt", state=state)
+                self.messages.append(
+                    LLMMessage(
+                        role=Role.user,
+                        injected=True,
+                        content="The last generation was discarded before dispatch because it was incomplete. "
+                        "None of its tool calls executed. Generate a fresh complete response within the remaining shared budget. "
+                        "Do not continue or concatenate a partial JSON/program. Do not replay earlier calls with tool results. "
+                        "Current device observations: " + json.dumps(state),
+                    )
+                )
 
         last_message = self.messages[-1]
 
@@ -2550,6 +2602,16 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
         profile_before = self.agent_profile.name
         async for event in self._handle_tool_calls(resolved):
             yield event
+            if (
+                self.config.generation.enabled
+                and isinstance(event, ToolResultEvent)
+                and event.tool_name == "robo_run_policy"
+                and event.error
+            ):
+                self.generation.audit("policy_failed", error=event.error)
+                raise RuntimeError(
+                    "Policy execution failed; no automatic action replay. See tool result and cleanup audit."
+                )
 
             if session_plan_event := self._handle_session_plan_events(event):
                 yield session_plan_event
@@ -3171,6 +3233,14 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
             ),
         )
 
+        self.generation.audit(
+            "request_context", model=model.model_dump(mode="json"), streaming=False
+        )
+        output_cap, reservation = self.generation.reserve(
+            backend_messages, tools, self._max_tokens
+        )
+        result = None
+        call_error = None
         start_time = time.perf_counter()
         try:
             logger.debug(
@@ -3188,7 +3258,7 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
                 tools=tools,
                 tool_choice=tool_choice,
                 extra_headers=self._get_extra_headers(provider),
-                max_tokens=self._max_tokens,
+                max_tokens=output_cap,
                 metadata=backend_metadata.model_dump(exclude_none=True),
             )
             end_time = time.perf_counter()
@@ -3210,6 +3280,7 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
             )
 
         except Exception as e:
+            call_error = type(e).__name__
             _log_model_call_failure(
                 model.alias,
                 provider.name,
@@ -3233,6 +3304,14 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
                 f"API error from {provider.name} (model: {model.name}): {e}"
             ) from e
 
+        finally:
+            self.generation.finish(
+                result,
+                reservation,
+                output_cap,
+                call_error if result is not None else call_error or "interrupted",
+            )
+
     async def _chat(
         self,
         model_override: ModelConfig | None = None,
@@ -3249,6 +3328,11 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
             tool_choice=self.format_handler.get_tool_choice(),
             call_type=call_type,
         )
+        validate_generation(
+            result,
+            require_reason=provider.emits_finish_reason
+            or self.config.generation.enabled,
+        )
         self.messages.append(result.message)
         if result.stop and result.stop.is_refusal:
             raise _refusal_error(provider.name, active_model.name, result)
@@ -3262,7 +3346,7 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
         )
         return result
 
-    async def _chat_streaming(self) -> AsyncGenerator[LLMChunk]:
+    async def _chat_streaming(self) -> AsyncGenerator[LLMChunk]:  # noqa: PLR0912, PLR0914, PLR0915 - streaming lifecycle accounting
         active_model = self.config.get_active_model()
         provider = self.config.get_active_provider()
         backend_metadata = self._build_backend_metadata()
@@ -3286,6 +3370,16 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
             ),
         )
 
+        self.generation.audit(
+            "request_context",
+            model=active_model.model_dump(mode="json"),
+            streaming=True,
+        )
+        output_cap, reservation = self.generation.reserve(
+            backend_messages, available_tools, self._max_tokens
+        )
+        call_error = None
+        stream_finished = False
         chunk_agg: LLMChunk | None = None
         start_time = time.perf_counter()
         try:
@@ -3305,7 +3399,7 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
                 tools=available_tools,
                 tool_choice=tool_choice,
                 extra_headers=self._get_extra_headers(),
-                max_tokens=self._max_tokens,
+                max_tokens=output_cap,
                 metadata=backend_metadata.model_dump(exclude_none=True),
             ):
                 if chunk.correlation_id:
@@ -3323,6 +3417,7 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
                 )
                 usage += chunk.usage or LLMUsage()
                 yield processed_chunk
+            stream_finished = True
             end_time = time.perf_counter()
 
             if chunk_agg is None or (
@@ -3335,6 +3430,11 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
                 )
             self._update_stats(usage=usage, time_seconds=end_time - start_time)
 
+            validate_generation(
+                chunk_agg,
+                require_reason=provider.emits_finish_reason
+                or self.config.generation.enabled,
+            )
             self.messages.append(chunk_agg.message)
             if chunk_agg.stop and chunk_agg.stop.is_refusal:
                 raise _refusal_error(provider.name, active_model.name, chunk_agg)
@@ -3348,6 +3448,7 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
             )
 
         except Exception as e:
+            call_error = type(e).__name__
             _log_model_call_failure(
                 active_model.alias,
                 provider.name,
@@ -3358,8 +3459,10 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
                 raise
             if isinstance(e, BackendError | IncompleteStreamError):
                 self._record_interrupted_assistant(chunk_agg)
-            if isinstance(e, IncompleteStreamError):
+            if isinstance(e, IncompleteStreamError | IncompleteGenerationError):
                 raise
+            if isinstance(e, BackendError) and e.status is None:
+                raise IncompleteGenerationError("stream_interrupted") from e
             if _should_raise_rate_limit_error(e):
                 raise RateLimitError(provider.name, active_model.name) from e
             if _is_context_too_long_error(e):
@@ -3374,6 +3477,14 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
             raise RuntimeError(
                 f"API error from {provider.name} (model: {active_model.name}): {e}"
             ) from e
+
+        finally:
+            self.generation.finish(
+                chunk_agg,
+                reservation,
+                output_cap,
+                call_error if stream_finished else call_error or "interrupted",
+            )
 
     def _record_interrupted_assistant(self, chunk: LLMChunk | None) -> None:
         if chunk is None or not chunk.message.content:

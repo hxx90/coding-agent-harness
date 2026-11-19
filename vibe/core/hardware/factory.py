@@ -28,12 +28,20 @@ def create_hardware_runtime(
         if session_dir is not None
         else cwd / ".vibe" / "hardware-runs" / session_id
     )
+    if config.generation.enabled and config.generation.audit_dir:
+        trace_root = Path(config.generation.audit_dir) / "hardware-runs"
     adapters: list[DeviceAdapter] = [DeterministicSimulatorAdapter()]
     if mcp_pool is not None:
         adapters.extend(
             _mcp_adapters(config, mcp_pool, evidence_dir=trace_root / "evidence")
         )
-    return HardwareRuntime(adapters=adapters, trace_dir=trace_root)
+    return HardwareRuntime(
+        adapters=adapters,
+        trace_dir=trace_root,
+        task_action_limit=config.generation.max_actions
+        if config.generation.enabled
+        else None,
+    )
 
 
 def _mcp_adapters(

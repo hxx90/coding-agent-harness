@@ -1041,3 +1041,8 @@ Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the [LICENSE](LICENSE) file for the full license text.
+
+Experimental Robo RGB-D Lift and the frozen RSI H1 geometry helper:
+[Mac runbook](docs/robo-h1-lift-runbook.md).
+
+For bounded real-CLI Lift sessions and opt-in regeneration of incomplete model responses, see [Robo CLI generation recovery](docs/robo-cli-generation-recovery.md). Regeneration and the project H1 switch remain off by default.

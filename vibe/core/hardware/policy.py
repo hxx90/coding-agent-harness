@@ -20,6 +20,7 @@ from vibe.core.hardware.models import (
     PolicyTaskOutcome,
     StopReceipt,
     VerificationReport,
+    VerificationStatus,
 )
 from vibe.core.hardware.runtime import HardwareRuntime, HardwareRuntimeError
 
@@ -146,7 +147,7 @@ class HardwarePolicyRunner:
         self._max_loop_iterations = max_loop_iterations
         self._timeout_seconds = timeout_seconds
 
-    async def run(
+    async def run(  # noqa: PLR0914, PLR0915
         self, source: str, *, device_id: str, lease_id: str, run_id: str
     ) -> HardwarePolicyResult:
         encoded = source.encode("utf-8")
@@ -180,9 +181,16 @@ class HardwarePolicyRunner:
         verification_names = {
             verification.name for verification in manifest.verifications
         }
+        geometry_library = manifest.metadata.get("geometry_library", "off")
+        capability_calls = (
+            {"resting_geometry"} if geometry_library == "h1-v8-v9" else set()
+        )
         try:
             module = _parse_policy(
-                source, action_names=action_names, verification_names=verification_names
+                source,
+                action_names=action_names,
+                verification_names=verification_names,
+                capability_calls=capability_calls,
             )
         except HardwarePolicyError as exc:
             raise exc.with_source(source_uri) from exc
@@ -194,6 +202,7 @@ class HardwarePolicyRunner:
             run_id=run_id,
             action_names=action_names,
             verification_names=verification_names,
+            capability_calls=capability_calls,
             max_statements=self._max_statements,
             max_actions=self._max_actions,
             max_loop_iterations=self._max_loop_iterations,
@@ -204,9 +213,15 @@ class HardwarePolicyRunner:
                 snapshot = await self._runtime.observe(device_id, run_id=run_id)
                 pending = await self._runtime.pending_verification_revisions()
         except asyncio.CancelledError:
+            self._persist_failure(
+                policy_id, interpreter, "cancelled", str(geometry_library)
+            )
             await self._stop_after_failure(device_id, run_id, "policy cancelled")
             raise
         except TimeoutError as exc:
+            self._persist_failure(
+                policy_id, interpreter, "timeout", str(geometry_library)
+            )
             await self._stop_after_failure(device_id, run_id, "policy timed out")
             raise HardwarePolicyError(
                 "Hardware policy timed out",
@@ -214,6 +229,9 @@ class HardwarePolicyRunner:
                 source_uri=source_uri,
             ) from exc
         except HardwarePolicyError as exc:
+            self._persist_failure(
+                policy_id, interpreter, exc.code, str(geometry_library)
+            )
             await self._stop_after_failure(device_id, run_id, "policy failed")
             raise exc.with_source(source_uri) from exc
         except HardwareRuntimeError as exc:
@@ -232,11 +250,13 @@ class HardwarePolicyRunner:
         report = interpreter.last_report
         if report is None:
             outcome = PolicyTaskOutcome.NOT_VERIFIED
-        elif device_id in pending:
+        elif report.status is not VerificationStatus.PASSED:
             outcome = PolicyTaskOutcome(report.status.value)
+        elif device_id in pending:
+            outcome = PolicyTaskOutcome.NOT_VERIFIED
         else:
             outcome = PolicyTaskOutcome.PASSED
-        return HardwarePolicyResult(
+        result = HardwarePolicyResult(
             policy_id=policy_id,
             source=source,
             source_sha256=hashlib.sha256(encoded).hexdigest(),
@@ -247,7 +267,44 @@ class HardwarePolicyRunner:
             snapshot=snapshot,
             report=report,
             task_outcome=outcome,
+            geometry_library=str(geometry_library),
         )
+        try:
+            await asyncio.to_thread(
+                (self._artifact_dir / f"{policy_id}.json").write_text,
+                result.model_dump_json(indent=2),
+            )
+        except OSError as exc:
+            await self._stop_after_failure(
+                device_id, run_id, "policy evidence write failed"
+            )
+            raise HardwarePolicyError(
+                "Could not persist policy result",
+                code="artifact_write_failed",
+                source_uri=source_uri,
+            ) from exc
+        return result
+
+    def _persist_failure(
+        self, policy_id: str, interpreter: _PolicyInterpreter, error: str, library: str
+    ) -> None:
+        # Evidence persistence must never prevent the failure-stop path.
+        try:
+            (self._artifact_dir / f"{policy_id}.json").write_text(
+                json.dumps(
+                    {
+                        "policy_id": policy_id,
+                        "error": error,
+                        "geometry_library": library,
+                        "steps": [
+                            step.model_dump(mode="json") for step in interpreter.steps
+                        ],
+                    },
+                    indent=2,
+                )
+            )
+        except OSError:
+            pass
 
     def _persist_source(self, *, policy_id: str, source: str) -> str:
         self._artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -276,7 +333,7 @@ class _ContinueSignal(Exception):
 
 
 class _PolicyInterpreter:
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         runtime: HardwareRuntime,
@@ -286,10 +343,12 @@ class _PolicyInterpreter:
         run_id: str,
         action_names: set[str],
         verification_names: set[str],
+        capability_calls: set[str],
         max_statements: int,
         max_actions: int,
         max_loop_iterations: int,
     ) -> None:
+        self._capability_calls = capability_calls
         self._runtime = runtime
         self._policy_id = policy_id
         self._device_id = device_id
@@ -488,6 +547,23 @@ class _PolicyInterpreter:
             cast(str, item.arg): await self._evaluate(item.value)
             for item in call.keywords
         }
+        if name in self._capability_calls:
+            from vibe.core.hardware._geometry import H1_VERSION, resting_geometry
+
+            if len(args) != 1:
+                raise self._error(
+                    call,
+                    "resting_geometry requires one points argument",
+                    code="invalid_arguments",
+                )
+            output = _bounded_json(resting_geometry(args[0], **kwargs), call)
+            self._record(
+                PolicyStepKind.CAPABILITY,
+                name,
+                call,
+                {"library": H1_VERSION, "output": output},
+            )
+            return output
         if name in self._direct_action_names:
             if args:
                 raise self._error(
@@ -566,6 +642,7 @@ class _PolicyInterpreter:
             parameters=_json_mapping(parameters, node),
         )
         receipt = await self._runtime.execute(command, run_id=self._run_id)
+        self.last_report = None
         self.receipts.append(receipt)
         output = cast(JsonValue, receipt.model_dump(mode="json"))
         self._record(PolicyStepKind.ACTION, action, node, output)
@@ -699,7 +776,11 @@ class _PolicyInterpreter:
 
 
 def _parse_policy(
-    source: str, *, action_names: set[str], verification_names: set[str]
+    source: str,
+    *,
+    action_names: set[str],
+    verification_names: set[str],
+    capability_calls: set[str] | None = None,
 ) -> ast.Module:
     try:
         module = ast.parse(source, mode="exec")
@@ -708,7 +789,9 @@ def _parse_policy(
             exc.msg, code="syntax", line=exc.lineno, column=exc.offset
         ) from exc
     direct_action_names = _direct_action_names(action_names)
-    allowed_calls = _PURE_CALLS | _POLICY_CALLS | direct_action_names
+    allowed_calls = (
+        _PURE_CALLS | _POLICY_CALLS | direct_action_names | (capability_calls or set())
+    )
     nodes = list(ast.walk(module))
     if len(nodes) > _MAX_AST_NODES:
         raise HardwarePolicyError(

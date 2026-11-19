@@ -225,3 +225,67 @@ async def test_policy_cancellation_requests_an_acknowledged_stop(
     assert "stop_requested" in event_kinds
     assert "stop_acknowledged" in event_kinds
     await runtime.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "source",
+    [
+        'verify("holding_object", object="cube")',
+        'home()\nverify("holding_object", object="cube")',
+        'fold_cloth(cloth="shirt")\nverify("cloth_folded", cloth="shirt")\nhome()',
+    ],
+)
+async def test_failed_or_outdated_verification_never_reports_success(tmp_path, source):
+    runtime = HardwareRuntime.simulated(trace_dir=tmp_path)
+    try:
+        await runtime.connect("sim-arm-1", run_id="no-false-success")
+        lease = await runtime.acquire_lease(
+            "sim-arm-1", owner="test", run_id="no-false-success"
+        )
+        await runtime.arm(
+            "sim-arm-1", lease_id=lease.lease_id, run_id="no-false-success"
+        )
+        result = await HardwarePolicyRunner(
+            runtime, artifact_dir=tmp_path / "policies"
+        ).run(
+            source,
+            device_id="sim-arm-1",
+            lease_id=lease.lease_id,
+            run_id="no-false-success",
+        )
+        assert result.task_outcome != "passed"
+    finally:
+        await runtime.aclose()
+
+
+@pytest.mark.asyncio
+async def test_result_persistence_failure_stops_device(tmp_path, monkeypatch):
+    runtime = HardwareRuntime.simulated(trace_dir=tmp_path)
+    original_write = Path.write_text
+
+    def fail_result(path, *args, **kwargs):
+        if path.suffix == ".json":
+            raise OSError("test disk full")
+        return original_write(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", fail_result)
+    try:
+        await runtime.connect("sim-arm-1", run_id="disk-full")
+        lease = await runtime.acquire_lease(
+            "sim-arm-1", owner="test", run_id="disk-full"
+        )
+        await runtime.arm("sim-arm-1", lease_id=lease.lease_id, run_id="disk-full")
+        with pytest.raises(HardwarePolicyError) as raised:
+            await HardwarePolicyRunner(runtime, artifact_dir=tmp_path / "policies").run(
+                "home()",
+                device_id="sim-arm-1",
+                lease_id=lease.lease_id,
+                run_id="disk-full",
+            )
+        assert raised.value.code == "artifact_write_failed"
+        assert (
+            await runtime.observe("sim-arm-1", run_id="disk-full")
+        ).status == "stopped"
+    finally:
+        await runtime.aclose()

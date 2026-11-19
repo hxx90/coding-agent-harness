@@ -624,3 +624,18 @@ class OtelSpanExporterConfig(BaseModel):
 
     endpoint: str
     headers: dict[str, str] | None = None
+
+
+class GenerationConfig(BaseModel):
+    """Opt-in bounded robot session; regeneration remains off by default."""
+
+    enabled: bool = False
+    recover_once: bool = False
+    limit_tokens: bool = True
+    max_calls: int = Field(default=16, ge=1, le=100)
+    max_input_tokens: int = Field(default=1200000, ge=1)
+    max_output_tokens: int = Field(default=24576, ge=1)
+    per_call_output_tokens: int = Field(default=4096, ge=1)
+    max_seconds: float = Field(default=480, gt=0)
+    max_actions: int = Field(default=80, ge=1)
+    audit_dir: str = ""

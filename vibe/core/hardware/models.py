@@ -53,6 +53,7 @@ class PolicyRunStatus(StrEnum):
 
 
 class PolicyStepKind(StrEnum):
+    CAPABILITY = auto()
     OBSERVATION = auto()
     ACTION = auto()
     VERIFICATION = auto()
@@ -271,6 +272,7 @@ class HardwarePolicyStep(BaseModel):
 class HardwarePolicyResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    geometry_library: str = "off"
     policy_id: str = Field(min_length=1, max_length=128)
     source: str = Field(max_length=32 * 1024)
     source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")

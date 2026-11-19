@@ -297,3 +297,8 @@ uv run --no-sync --active capx/envs/launch.py \
 - CaP-X 固定 Robosuite fork 的 Git 请求持续超时；GitHub tarball 下载到约 281 MiB 后中断且校验损坏，未能安装固定 fork。
 
 所以当前验收结论是：Robo 的本地 HardwareRuntime、CaP-X 协议接入、Robosuite 原生物理步进和 CaP-X 包装器 reset 已通过；CaP-X 的定制运动循环与官方完整 Benchmark 尚未通过。完整研究与外部验收矩阵见 [CaP-X 接入研究](research/capx-bench-integration.md)。
+
+## 八、实验性 RGB-D Lift / H1
+
+H1 固定哈希资产、视觉观测模式、开关、配对 smoke 和局限见
+[Mac RGB-D Lift / H1 接入](robo-h1-lift-runbook.md)。
