@@ -455,15 +455,31 @@ VSCODE_EXTENSION_PROMO_WHATS_NEW_SUFFIX = (
 
 
 class WhatsNewMessage(Static):
-    def __init__(self, content: str) -> None:
+    def __init__(
+        self, content: str, *, plan_offer: str | None = None, suffix: str = ""
+    ) -> None:
         super().__init__()
         self.add_class("whats-new-message")
         self._content = content
+        self._plan_offer = plan_offer
+        self._suffix = suffix
+
+    def _body(self) -> str:
+        offer = f"\n\n{self._plan_offer}" if self._plan_offer else ""
+        return f"{self._content}{offer}{self._suffix}"
 
     def compose(self) -> ComposeResult:
         from textual.widgets import Markdown
 
-        yield Markdown(self._content)
+        yield Markdown(self._body())
+
+    async def update_plan_offer(self, plan_offer: str | None) -> None:
+        from textual.widgets import Markdown
+
+        if plan_offer == self._plan_offer:
+            return
+        self._plan_offer = plan_offer
+        await self.query_one(Markdown).update(self._body())
 
 
 class GreetingMessage(Static):

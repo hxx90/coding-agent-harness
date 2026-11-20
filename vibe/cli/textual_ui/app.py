@@ -1321,12 +1321,17 @@ class VibeApp(App):  # noqa: PLR0904
             self._tui_displayed_monotonic = time.monotonic()
 
     async def _complete_post_ready_startup(self) -> None:
+        # Release notes are local; optional account/identity I/O must not gate them.
+        await self._check_and_show_whats_new()
         try:
             await asyncio.gather(self._refresh_account(), self._refresh_identity())
         finally:
             self._refresh_command_registry()
             self._startup_command_availability_ready.set()
-        await self._check_and_show_whats_new()
+        if (message := self._whats_new_message) is not None and message.is_mounted:
+            await message.update_plan_offer(
+                plan_offer_cta(self.app_server.resources.account.current)
+            )
         if (
             not self._show_resume_picker
             and self._resume_session_id is None
@@ -5851,13 +5856,15 @@ class VibeApp(App):  # noqa: PLR0904
 
         content = load_whats_new_content()
         if content is not None:
-            body = content
-            plan_offer = plan_offer_cta(self.app_server.resources.account.current)
-            if plan_offer is not None:
-                body = f"{body}\n\n{plan_offer}"
-            if self._show_vscode_extension_promo:
-                body = f"{body}{VSCODE_EXTENSION_PROMO_WHATS_NEW_SUFFIX}"
-            whats_new_message = WhatsNewMessage(body)
+            whats_new_message = WhatsNewMessage(
+                content,
+                plan_offer=plan_offer_cta(self.app_server.resources.account.current),
+                suffix=(
+                    VSCODE_EXTENSION_PROMO_WHATS_NEW_SUFFIX
+                    if self._show_vscode_extension_promo
+                    else ""
+                ),
+            )
             if self._history_widget_indices:
                 whats_new_message.add_class("after-history")
             chat = self._chat_widget
