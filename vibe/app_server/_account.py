@@ -51,6 +51,7 @@ __all__ = [
 
 _PAID_CHAT_PLANS = {"INDIVIDUAL", "EDU", "TEAM"}
 _RECONCILE_REASON = "tenant-domain-reconcile"
+_ACCOUNT_LOOKUP_TIMEOUT_SECONDS = 2.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -270,9 +271,12 @@ class AccountController:
         provider, api_key = provider_and_key
 
         try:
-            result = await self._gateway.read(
-                base_url=console_base_url, api_key=api_key
-            )
+            # Account UI is optional. Bound the whole request, including a
+            # slow/drip-fed response that never hits HTTP inactivity timeouts.
+            async with asyncio.timeout(_ACCOUNT_LOOKUP_TIMEOUT_SECONDS):
+                result = await self._gateway.read(
+                    base_url=console_base_url, api_key=api_key
+                )
         except AccountGatewayUnauthorized:
             # The credential was rejected: drop any cached plan so telemetry
             # reports null ("lookup failed"), not a stale cached plan for the TTL.
@@ -289,7 +293,7 @@ class AccountController:
                     teleport_action=upgrade,
                 )
             )
-        except AccountGatewayUnavailable as exc:
+        except (AccountGatewayUnavailable, TimeoutError) as exc:
             logger.warning(
                 "Failed to fetch account status (%s)", type(exc).__name__, exc_info=exc
             )

@@ -851,3 +851,99 @@ async def test_reconcile_tenant_domains_rejects_non_https_urls(
 
     assert spies.provider_calls == []
     assert spies.vibe_calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancel", [False, True])
+async def test_account_lookup_deadline_and_external_cancellation(monkeypatch, cancel):
+    monkeypatch.setenv("MISTRAL_API_KEY", "test-account-key")
+    loop = build_test_agent_loop()
+    started, cancelled = asyncio.Event(), asyncio.Event()
+
+    class HangingGateway:
+        async def read(
+            self, *, base_url: str, api_key: str, timeout: float | None = None
+        ) -> WhoAmIResult:
+            started.set()
+            try:
+                return await asyncio.Future[WhoAmIResult]()
+            finally:
+                cancelled.set()
+
+    controller = AccountController(loop, HangingGateway())
+    task = asyncio.create_task(controller.read())
+    try:
+        await asyncio.wait_for(started.wait(), timeout=1)
+        if cancel:
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        else:
+            # Do not cancel from the test deadline: the controller must stop itself.
+            done, _ = await asyncio.wait({task}, timeout=2.5)
+            assert task in done, "Account lookup exceeded the total deadline"
+            assert task.result().status is AccountStatus.UNAVAILABLE
+        assert cancelled.is_set()
+        # A cancelled/timed-out lookup must release the serialization lock.
+        controller._gateway = FakeAccountGateway(
+            WhoAmIResult(plan_type=AccountPlanKind.API, plan_name="FREE")
+        )
+        assert (
+            await asyncio.wait_for(controller.read(), timeout=1)
+        ).status is AccountStatus.READY
+    finally:
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        await loop.aclose()
+
+
+@pytest.mark.asyncio
+async def test_account_deadline_bounds_real_drip_fed_http(monkeypatch):
+    """A peer sending regularly must not extend optional account startup I/O."""
+    monkeypatch.setenv("MISTRAL_API_KEY", "test-account-key")
+    peers: set[asyncio.Task] = set()
+    sent_chunks = 0
+
+    async def slow_peer(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        nonlocal sent_chunks
+        task = asyncio.current_task()
+        assert task is not None
+        peers.add(task)
+        try:
+            await reader.readuntil(b"\r\n\r\n")
+            writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: 10000\r\n\r\n")
+            while True:
+                writer.write(b" ")
+                await writer.drain()
+                sent_chunks += 1
+                await asyncio.sleep(0.02)
+        except (ConnectionError, asyncio.IncompleteReadError):
+            pass
+        finally:
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except ConnectionError:
+                pass
+
+    server = await asyncio.start_server(slow_peer, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    loop = build_test_agent_loop(
+        config=build_test_vibe_config(console_base_url=f"http://127.0.0.1:{port}")
+    )
+    task = asyncio.create_task(AccountController(loop, HttpAccountGateway()).read())
+    try:
+        done, _ = await asyncio.wait({task}, timeout=2.8)
+        assert task in done, "Drip-fed HTTP exceeded the account total deadline"
+        assert task.result().status is AccountStatus.UNAVAILABLE
+        assert sent_chunks >= 2
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        server.close()
+        await server.wait_closed()
+        for peer in peers:
+            peer.cancel()
+        await asyncio.gather(*peers, return_exceptions=True)
+        await loop.aclose()
