@@ -9,6 +9,7 @@ from typing import ClassVar
 from urllib.parse import unquote, urlsplit
 from uuid import uuid4
 
+from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
@@ -70,7 +71,7 @@ class RobotScreen(ModalScreen[None]):
             yield Select([], prompt="选择机器人", id="robot-device")
             yield Static("", id="robot-capabilities", markup=False)
             yield Static("尚未读取观测。", id="robot-observation", markup=False)
-            with Horizontal():
+            with Horizontal(id="robot-actions"):
                 yield Button("刷新列表", id="robot-refresh")
                 yield Button(
                     "连接并读取", id="robot-connect", variant="primary", disabled=True
@@ -81,6 +82,24 @@ class RobotScreen(ModalScreen[None]):
                 "连接不会自动取得租约、武装或运动。选择会用于之后的自然语言任务。",
                 markup=False,
             )
+
+    def on_resize(self, event: events.Resize) -> None:
+        self.call_after_refresh(self._reveal_focused_control)
+
+    def on_descendant_focus(self, event: events.DescendantFocus) -> None:
+        self.call_after_refresh(self._reveal_focused_control)
+
+    def _reveal_focused_control(self) -> None:
+        if not self.is_mounted or self.focused is None:
+            return
+        # Resize and wrapped labels change geometry after focus is assigned.
+        # Reveal the whole action row, including buttons of different heights.
+        target = (
+            self.query_one("#robot-actions", Horizontal)
+            if isinstance(self.focused, Button)
+            else self.focused
+        )
+        self.scroll_to_widget(target, animate=False, immediate=True)
 
     async def on_mount(self) -> None:
         self.query_one("#robot-content").border_title = "Robo · 机器人"

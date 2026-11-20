@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 from textual.widgets import Button, Select, Static
 
-from tests.conftest import build_test_vibe_app, build_test_vibe_config
+from tests.conftest import build_test_vibe_app, build_test_vibe_config, wait_until
 from vibe.app_server.models import (
     HardwareDeviceOutput,
     HardwareEvidenceOutput,
@@ -125,5 +125,38 @@ async def test_idle_escape_and_narrow_buttons():
             assert (
                 screen.find_widget(button).visible_region.width == button.region.width
             )
+            assert (
+                screen.find_widget(button).visible_region.height == button.region.height
+            )
         await pilot.press("escape")
         assert not isinstance(app.screen, RobotScreen)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("focus_before_resize", [False, True])
+async def test_connected_robot_buttons_remain_reachable_after_resize(
+    focus_before_resize,
+):
+    app = build_test_vibe_app()
+    async with app.run_test(size=(120, 44)) as pilot:
+        await app._show_robot()
+        screen = app.screen
+        assert isinstance(screen, RobotScreen)
+        assert await wait_until(pilot, lambda: bool(screen._response.devices))
+        screen.query_one(Select).value = "sim-arm-1"
+        await pilot.pause()
+        await pilot.click("#robot-connect")
+        assert await wait_until(pilot, lambda: screen._response.selection_confirmed)
+        if focus_before_resize:
+            screen.query_one("#robot-close", Button).focus()
+            await pilot.pause()
+        await pilot.resize_terminal(80, 24)
+        if not focus_before_resize:
+            screen.query_one("#robot-close", Button).focus()
+        await pilot.pause(0.6)
+        for button in screen.query(Button):
+            assert screen.find_widget(button).visible_region == button.region
+
+        assert screen.focused is screen.query_one("#robot-close", Button)
+        await pilot.press("enter")
+        assert await wait_until(pilot, lambda: not isinstance(app.screen, RobotScreen))
