@@ -1,23 +1,60 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
+import pytest_asyncio
+from textual.worker import WorkerCancelled
 
 from tests.conftest import build_test_vibe_app
 from vibe.app_server import AppServerSession
-from vibe.cli.textual_ui.app import run_textual_ui
+from vibe.cli.textual_ui.app import VibeApp, run_textual_ui
 from vibe.cli.textual_ui.widgets.session_picker import SessionPickerApp
 from vibe.config_values import AUTO_THEME
 
 
+@pytest_asyncio.fixture
+async def prepared_app():
+    before = asyncio.all_tasks()
+    apps: list[VibeApp] = []
+
+    async def create(*, initial_prompt: str | None = None) -> VibeApp:
+        app = build_test_vibe_app(initial_prompt=initial_prompt)
+        apps.append(app)
+        await app.prepare()
+        return app
+
+    try:
+        yield create
+    finally:
+        # prepare() starts server/background tasks even without mounting the TUI.
+        # Match the production entry point instead of leaving pytest to cancel
+        # parent and low-level connection tasks together at loop shutdown.
+        for app in reversed(apps):
+            workers = list(app.workers)
+            app.workers.cancel_all()
+            try:
+                for worker in workers:
+                    with suppress(WorkerCancelled):
+                        await worker.wait()
+            finally:
+                await app.shutdown_cleanup()
+    await asyncio.sleep(0)
+    leaked = [
+        task
+        for task in asyncio.all_tasks() - before
+        if task is not asyncio.current_task() and not task.done()
+    ]
+    assert not leaked, [(task.get_name(), str(task.get_coro())) for task in leaked]
+
+
 @pytest.mark.asyncio
 async def test_startup_prompt_waits_for_startup_resume_picker(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, prepared_app
 ) -> None:
-    app = build_test_vibe_app(initial_prompt="continue the work")
-    await app.prepare()
+    app = await prepared_app(initial_prompt="continue the work")
     app._show_resume_picker = True
     process_prompt = Mock()
 
@@ -34,10 +71,9 @@ async def test_startup_prompt_waits_for_startup_resume_picker(
 
 @pytest.mark.asyncio
 async def test_startup_prompt_runs_after_startup_resume_picker_selection(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, prepared_app
 ) -> None:
-    app = build_test_vibe_app(initial_prompt="continue the work")
-    await app.prepare()
+    app = await prepared_app(initial_prompt="continue the work")
     app._show_resume_picker = True
     app._startup_command_availability_ready.set()
     process_prompt = Mock()
@@ -56,10 +92,9 @@ async def test_startup_prompt_runs_after_startup_resume_picker_selection(
 
 @pytest.mark.asyncio
 async def test_startup_teleport_waits_for_account_read_after_session_selection(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, prepared_app
 ) -> None:
-    app = build_test_vibe_app(initial_prompt="continue the work")
-    await app.prepare()
+    app = await prepared_app(initial_prompt="continue the work")
     app._show_resume_picker = True
     app._teleport_on_start = True
     run_worker = Mock()
@@ -94,10 +129,9 @@ async def test_startup_teleport_waits_for_account_read_after_session_selection(
 
 @pytest.mark.asyncio
 async def test_failed_resume_restores_transcript_when_previewing(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, prepared_app
 ) -> None:
-    app = build_test_vibe_app()
-    await app.prepare()
+    app = await prepared_app()
     app._picker.previewing = True
     app._cached_messages_area = MagicMock(remove_children=AsyncMock())
 
@@ -126,10 +160,9 @@ async def test_failed_resume_restores_transcript_when_previewing(
 
 @pytest.mark.asyncio
 async def test_failed_resume_skips_restore_when_not_previewing(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, prepared_app
 ) -> None:
-    app = build_test_vibe_app()
-    await app.prepare()
+    app = await prepared_app()
     app._picker.previewing = False
 
     reset_ui = Mock()
@@ -153,10 +186,9 @@ async def test_failed_resume_skips_restore_when_not_previewing(
 
 @pytest.mark.asyncio
 async def test_exit_picker_to_input_clears_preview_and_startup_state(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, prepared_app
 ) -> None:
-    app = build_test_vibe_app()
-    await app.prepare()
+    app = await prepared_app()
     app._show_resume_picker = True
     app._startup_prompt_processed = False
     app._picker.previewing = True
