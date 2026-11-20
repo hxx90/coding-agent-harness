@@ -92,7 +92,8 @@ type SessionlessCatalogFactory = Callable[
 _DEFAULT_BASE_URL = "https://api.mistral.ai"
 _BOOTSTRAP_CACHE_FORMAT = 2
 _BOOTSTRAP_CACHE_TTL_SECONDS = 10 * 60
-_BOOTSTRAP_TIMEOUT_SECONDS = 30.0
+_BOOTSTRAP_TIMEOUT_SECONDS = 2.0
+_BOOTSTRAP_REFRESH_TIMEOUT_SECONDS = 30.0
 _MAX_CONNECTORS = 256
 _MAX_TOOLS_PER_CONNECTOR = 128
 _MAX_INPUT_SCHEMA_BYTES = 64 * 1024
@@ -1214,16 +1215,24 @@ class ConnectorCatalogService:
                 cached = await self._read_catalog_for_provider(provider)
                 if cached.catalog is not None:
                     return cached.catalog
-            return await self._refresh(provider)
+            return await self._refresh(provider, force_refresh=force_refresh)
 
-    async def _refresh(self, provider: _ConnectorProvider) -> ResolvedConnectorCatalog:
+    async def _refresh(
+        self, provider: _ConnectorProvider, *, force_refresh: bool = False
+    ) -> ResolvedConnectorCatalog:
         started_at = time.perf_counter()
         with _tracer.start_as_current_span("connector_catalog.bootstrap") as span:
             span.set_attribute("mistral_ai.vibe.harness.backend", self._backend)
             try:
-                payload = await self._fetch_bootstrap(
-                    provider.base_url, provider.api_key
+                timeout = (
+                    _BOOTSTRAP_REFRESH_TIMEOUT_SECONDS
+                    if force_refresh
+                    else _BOOTSTRAP_TIMEOUT_SECONDS
                 )
+                async with asyncio.timeout(timeout):
+                    payload = await self._fetch_bootstrap(
+                        provider.base_url, provider.api_key
+                    )
                 catalog = await asyncio.to_thread(
                     _resolve_catalog, payload, provider.fingerprint
                 )
@@ -1330,7 +1339,7 @@ async def _fetch_bootstrap(base_url: str, api_key: str) -> object:
 
 def _build_bootstrap_http_client() -> VibeAsyncHTTPClient:
     return VibeAsyncHTTPClient(
-        timeout=_BOOTSTRAP_TIMEOUT_SECONDS, verify=build_ssl_context()
+        timeout=_BOOTSTRAP_REFRESH_TIMEOUT_SECONDS, verify=build_ssl_context()
     )
 
 
@@ -1860,6 +1869,8 @@ def _canonical_json(value: object) -> bytes:
 
 
 def _redacted_bootstrap_error(exc: Exception) -> str:
+    if isinstance(exc, TimeoutError | httpx.TimeoutException):
+        return "Workspace connector discovery timed out. Retry with `/reload`."
     if isinstance(exc, httpx.HTTPStatusError):
         return f"Failed to load workspace connectors (HTTP {exc.response.status_code})."
     return f"Failed to load workspace connectors: {type(exc).__name__}"

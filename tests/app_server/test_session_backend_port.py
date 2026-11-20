@@ -15,6 +15,7 @@ from vibe.app_server._session_backend_port import (
     SessionBackend,
     SessionBackendError,
     SessionBackendHardwareControl,
+    SessionBackendHardwareSetup,
     SessionBackendHost,
     SessionBackendQueuedTurnSteering,
 )
@@ -64,6 +65,8 @@ def test_session_backend_contract_covers_the_complete_session_lifecycle() -> Non
         "config/reload",
         "config/write",
         "hardware/stop",
+        "hardware/setup",
+        "hardware/setup/cancel",
         "session/agent/update",
         "session/compact",
         "session/context/inject",
@@ -80,6 +83,10 @@ def test_session_backend_contract_covers_the_complete_session_lifecycle() -> Non
     }
     assert _protocol_members(SessionBackendQueuedTurnSteering) == {"steer_queued_turn"}
     assert _protocol_members(SessionBackendHardwareControl) == {"stop_hardware"}
+    assert _protocol_members(SessionBackendHardwareSetup) == {
+        "setup_hardware",
+        "cancel_hardware_setup",
+    }
 
 
 def test_session_backend_host_contract_owns_session_selection() -> None:

@@ -3685,6 +3685,7 @@ def test_agent_ceiling_without_overrides_matches_the_session_catalogue() -> None
 @pytest.mark.parametrize(
     ("system_prompt_id", "expected_phrases"),
     [
+        ("cli", ("You are Robo, a hardware-oriented CLI agent",)),
         (
             "cli_2026-07_v2",
             ("Scale verification to the change.", "No fabricated URLs or paths."),
@@ -3715,6 +3716,8 @@ def test_unified_system_instructions_use_the_selected_prompt_variant(
 
     # Assert
     assert all(phrase in instructions for phrase in expected_phrases)
+    assert "You are Robo" in instructions
+    assert "You are Mistral Vibe" not in instructions
 
 
 def test_unified_system_instructions_include_agents_md_docs(
@@ -3728,7 +3731,9 @@ def test_unified_system_instructions_include_agents_md_docs(
     pytest.importorskip("mistralai_vibe_local_harness.vibe")
     from vibe.core.config.harness_files import HarnessFilesManager
 
-    (config_dir / "AGENTS.md").write_text("# User doc", encoding="utf-8")
+    (config_dir / "AGENTS.md").write_text(
+        "# User doc\nReference: Mistral Vibe and Vibe Code.", encoding="utf-8"
+    )
     (tmp_path / "AGENTS.md").write_text("# Project doc", encoding="utf-8")
     harness_files = HarnessFilesManager(sources=("user", "project")).for_session(
         tmp_path
@@ -3747,6 +3752,7 @@ def test_unified_system_instructions_include_agents_md_docs(
 
     # Assert
     assert "# User doc" in instructions
+    assert "Reference: Mistral Vibe and Vibe Code." in instructions
     assert "## Project instructions (checked into the codebase)" in instructions
     assert f"Contents of {tmp_path}/AGENTS.md" in instructions
     assert "# Project doc" in instructions

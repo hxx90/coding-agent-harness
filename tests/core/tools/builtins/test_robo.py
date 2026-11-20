@@ -39,11 +39,11 @@ from vibe.core.tools.builtins.robo import (
     RoboVerifyArgs,
     RoboVerifyConfig,
 )
-from vibe.core.types import FileImageSource
+from vibe.core.types import FileImageSource, ToolStreamEvent
 
 
 async def _result(stream: AsyncGenerator[object, None]) -> BaseModel:
-    items = [item async for item in stream]
+    items = [item async for item in stream if not isinstance(item, ToolStreamEvent)]
     assert len(items) == 1
     assert isinstance(items[0], BaseModel)
     return items[0]

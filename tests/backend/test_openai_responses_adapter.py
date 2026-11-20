@@ -134,6 +134,49 @@ def _assert_chunk_matches(result: LLMChunk, expected_result: ResultData) -> None
         assert tool_call.index == expected_tool_call["index"]
 
 
+class TestCompletionStatus:
+    @pytest.mark.parametrize(
+        ("status", "reason"),
+        [
+            ("completed", "stop"),
+            ("incomplete", "incomplete"),
+            ("failed", "responses_failed"),
+            ("cancelled", "responses_cancelled"),
+            ("in_progress", "responses_in_progress"),
+            ("queued", "responses_queued"),
+            ("tool_calls", "responses_tool_calls"),
+            ("", "responses_"),
+            (None, None),
+        ],
+    )
+    def test_nonstream_status(self, adapter, provider, status, reason):
+        chunk = adapter.parse_response({"output": [], "status": status}, provider)
+        assert (chunk.stop.reason if chunk.stop else None) == reason
+
+    def test_nonstream_missing_status_does_not_imply_completion(
+        self, adapter, provider
+    ):
+        chunk = adapter.parse_response({"output": []}, provider)
+        assert chunk.stop is None
+
+    @pytest.mark.parametrize(
+        ("event", "status", "reason"),
+        [
+            ("response.completed", "incomplete", "incomplete"),
+            ("response.completed", "", "responses_"),
+            ("response.incomplete", "completed", "incomplete"),
+        ],
+    )
+    def test_conflicting_terminal_status_fails_closed(
+        self, adapter, provider, event, status, reason
+    ):
+        chunk = adapter.parse_response(
+            {"type": event, "response": {"status": status}}, provider
+        )
+        assert chunk.stop is not None
+        assert chunk.stop.reason == reason
+
+
 class TestPrepareRequest:
     def test_endpoint(self, adapter):
         assert adapter.endpoint == "/responses"
@@ -1171,7 +1214,7 @@ class TestParseStreamingEvents:
         assert chunk.usage.prompt_tokens == 50
         assert chunk.usage.completion_tokens == 25
         assert chunk.stop is not None
-        assert chunk.stop.reason == "completed"
+        assert chunk.stop.reason == "stop"
 
     def test_response_incomplete_uses_terminal_usage(self, adapter, provider):
         data = {

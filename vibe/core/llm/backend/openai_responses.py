@@ -105,6 +105,7 @@ class _ResponsesErrorData(TypedDict, total=False):
 
 
 class _ResponsesObject(TypedDict, total=False):
+    status: str | None
     usage: _ResponsesUsageData | None
     output: list[dict[str, Any]]
     error: _ResponsesErrorData | None
@@ -160,6 +161,18 @@ _RESPONSES_FUNCTION_CALL_ITEM_ADAPTER = TypeAdapter(_ResponsesFunctionCallItem)
 _RESPONSES_MESSAGE_ITEM_ADAPTER = TypeAdapter(_ResponsesMessageItem)
 _RESPONSES_REASONING_ITEM_ADAPTER = TypeAdapter(_ResponsesReasoningItem)
 _RESPONSES_ERROR_DATA_ADAPTER = TypeAdapter(_ResponsesErrorData)
+
+
+def _response_stop(status: str | None) -> StopInfo | None:
+    if status is None:
+        return None
+    if status == "completed":
+        return StopInfo(reason="stop")
+    if status == "incomplete":
+        return StopInfo(reason="incomplete")
+    # Unknown/provider-specific states must not accidentally match a successful
+    # finish reason from another API (for example, "tool_calls").
+    return StopInfo(reason=f"responses_{status}")
 
 
 @dataclass(slots=True)
@@ -435,6 +448,13 @@ class _OpenAIResponsesStreamParser:
     def _on_response_terminal(self, data: _RawResponsesStreamEvent) -> LLMChunk:
         event = _RESPONSES_TERMINAL_EVENT_ADAPTER.validate_python(data)
         response_obj = cast(_ResponsesObject, event.get("response") or {})
+        status = event["type"].removeprefix("response.")
+        if status == "completed":
+            # The terminal event is sufficient when the nested status is absent.
+            # An explicit non-complete status still fails closed.
+            response_status = response_obj.get("status")
+            if response_status is not None:
+                status = response_status
         self.reset()
         output = response_obj.get("output") or []
         return LLMChunk(
@@ -444,7 +464,7 @@ class _OpenAIResponsesStreamParser:
                 reasoning_payloads=self._reasoning_payloads_from_output(output),
             ),
             usage=self._usage_from_response(response_obj.get("usage")),
-            stop=StopInfo(reason=event["type"].removeprefix("response.")),
+            stop=_response_stop(status),
         )
 
     def _on_error(self, data: _RawResponsesStreamEvent) -> LLMChunk:
@@ -736,6 +756,7 @@ class OpenAIResponsesAdapter(APIAdapter):
                 usage=self._stream_parser._usage_from_response(
                     response_data.get("usage")
                 ),
+                stop=_response_stop(response_data.get("status")),
             )
 
         return self._stream_parser.parse(data)

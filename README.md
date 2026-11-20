@@ -7,46 +7,58 @@
   <img src="distribution/zed/icons/robo.svg" alt="Robo 萝卜机器人 Logo" width="144">
 </p>
 
-**面向软件与真实硬件的 AI Agent Harness。**
+**用自然语言生成策略，操作可视化机械臂，并独立验证结果。**
 
-Robo 是一个面向代码与真实硬件的命令行智能体，基于 Mistral Vibe
-演进而来。它通过自然语言、类型化工具和安全控制来操作代码库，并将逐步支持机器人设备。
+Robo 基于 Mistral Vibe，保留代码助手能力，并增加受限 Python 策略、设备租约、
+武装、停止 ACK、运行轨迹和录像。当前已验证的机器人路径是 **Mac 上的
+MuJoCo / Robosuite Panda 仿真**；这不代表已完成真实机械臂验收。
 
-> [!WARNING]
-> Robo 可在 Windows 上运行，但当前主要支持和测试 UNIX 环境。
+本 README 对应 `hxx90/coding-agent-harness` 的 **`codex/robo-hardware-harness`**
+分支，实现位于 `vibe/`。同仓库 `main` 的 `src/agent_harness/` 是另一套实现；
+旧 RSI 的 benchmark-protocol 工程也不是本 CLI。不要按目录名判断版本。
 
-### One-line install (recommended)
+### 当前能力与验证边界
 
-**Linux and macOS**
+| 能力 | 当前状态 |
+| --- | --- |
+| Lift：抓起红方块 | 自然语言 → 自主策略 → 独立验证 → 停止 ACK → 释放租约已跑通 |
+| Stack：将红方块放到绿方块上 | 可选场景，已有一次自主全链路成功；默认仍为 Lift |
+| 视觉输入 | RGB-D、公开相机标定、颜色分割点云；需显式启用 `rgbd` |
+| RSI H1 几何 helper | 固定哈希原件，可选、默认关闭；迁移后的增益尚未证明，Stack 要求关闭 |
+| 截断与动作控制 | 派发前完整性检查；固定目标逐周期反馈 `move_to`；自动重新生成默认关闭 |
 
-```bash
-curl -LsSf https://mistral.ai/vibe/install.sh | bash
-```
+截至 2026-11-19，已提交基线 `5dcb86e` 对应的本地记录为 Lift 固定场景
+907 / 911 / 919 共 3/3 自主全链路成功，Stack 场景 1201 为 1/1。
+两组均关闭 H1 和自动生成恢复，未设置客户端 token 配额。Lift 907 在同一会话内
+生成了第二段策略才成功。**这些是小样本工程验收，不是总体成功率或官方
+RoboWorld / CaP-X 成绩。** 原始录像和实验报告保存在实验工作区，未随仓库分发。
 
-**Windows**
+### 从本分支安装
 
-First, install uv
-
-```bash
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-Then, use uv command below.
-
-### Using uv
-
-```bash
-uv tool install mistral-vibe
-```
-
-### Using pip
+需要 Python 3.12+、[uv](https://docs.astral.sh/uv/getting-started/installation/)
+0.8.0+ 和支持 Textual 的终端。可视化路径已在 Apple Silicon Mac 验证；其他平台
+尚无同等验收记录。
 
 ```bash
-pip install mistral-vibe
+# 仅首次获取；已有工作目录时直接进入原目录，不要覆盖或重置。
+git clone --branch codex/robo-hardware-harness \
+  https://github.com/hxx90/coding-agent-harness.git robo
+cd robo
+uv sync --extra simulator
+uv run --no-sync robo --help
 ```
+
+上游 `mistral-vibe` 安装包和 Mistral 一键安装脚本不包含本分支的 Robo 改动。
+本地尚未推送的提交也不会出现在新 clone 中；用 `git log -1 --oneline` 确认版本。
+已安装仿真依赖后使用 `uv run --no-sync` 启动，避免普通同步移除可选仿真依赖。
 
 ## Table of Contents
 
+- [当前能力与验证边界](#当前能力与验证边界)
+- [从本分支安装](#从本分支安装)
+- [Mac 可视化快速开始](#quick-start)
+- [场景、H1 与运行记录](#场景h1-与运行记录)
+- [常见问题与开发验证](#常见问题与开发验证)
 - [Features](#features)
   - [Built-in Agents](#built-in-agents)
   - [Subagents and Task Delegation](#subagents-and-task-delegation)
@@ -184,39 +196,138 @@ Most modern terminals should work, but older or minimal terminal emulators may h
 
 ## Quick Start
 
-1. Navigate to your project's root directory:
+以下步骤使用 Mac 可视化 Lift，H1 关闭。模型通过自然语言自行生成策略。
+
+1. **在仓库根目录确认环境。** 首次安装执行上一节的 `uv sync --extra simulator`。
+   已有安装可直接使用原工作目录，例如 `mistral-vibe`；不必改目录名。
+
+2. **保留已有模型配置。** 模型和 provider 可配置在 `~/.vibe/config.toml`，
+   凭据使用该 provider 指定的环境变量或 `~/.vibe/.env`，不要提交进 Git。
+   默认 Mistral provider 可用 `uv run --no-sync robo --setup` 配置；已有自定义
+   provider 不要为了跑仿真而换模型。后文的 Mistral 密钥说明仅适用于该 provider。
+
+3. **配置仿真 MCP。** 没有项目配置时：
 
    ```bash
-   cd /path/to/your/project
+   mkdir -p .vibe
+   # 只在文件不存在时创建，保留已有项目配置。
+   if [ ! -e .vibe/config.toml ]; then
+     cp examples/robo/lift-rgbd-off.toml .vibe/config.toml
+   fi
    ```
 
-2. Run Vibe:
+   文件已经存在时，手动合并 [Lift 示例](examples/robo/lift-rgbd-off.toml) 中的
+   `robo-mujoco` MCP 配置，保留模型及其他设置；不要复制覆盖或重复定义同名 server。
+   示例关闭原始 MCP 动作工具，让模型通过带租约和武装检查的 `robo_*` 工具执行动作。
+
+   在文件开头、所有 `[表]` 之前设置顶层 `enable_update_checks = false`，避免收到
+   上游包升级提示。在同一项目文件中添加或更新以下独立表，**不要放进
+   `mcp_servers.env`**：
+
+   ```toml
+   [generation]
+   enabled = true
+   limit_tokens = false
+   recover_once = false
+
+   [session_logging]
+   generate_titles = false
+   ```
+
+   这会保留完整性检查与安全收尾，并关闭客户端 token 配额及自动重新生成。
+   请求/时间/动作额度仍生效（默认 16 请求、480 秒、80 动作），策略还有自身的
+   AST 与执行限制。服务端仍有模型上下文和输出限制。完整说明见
+   [生成完整性与会话控制](docs/robo-cli-generation-recovery.md)。
+
+4. **启动真实 CLI。**
 
    ```bash
-   vibe
+   uv run --no-sync robo --legacy-harness --workdir .
    ```
 
-3. If this is your first time running Vibe, it will:
-   - Use built-in defaults without creating a configuration file until you
-     save a setting
-   - Prompt you to enter your API key if it's not already configured
-   - Save your API key to `~/.vibe/.env` for future use
+   输入以下自然语言任务，并按 CLI 提示批准硬件工具：
 
-   Alternatively, you can configure your API key separately using `vibe --setup`.
+   > 仅操作 mujoco-panda-1 仿真。读取设备 Manifest，连接、获取租约并武装。
+   > 根据当前 RGB-D 视觉观测生成受限 Python 策略，抓起红色方块；
+   > 策略内验证 lift_object，再在策略外独立验证。最后停止，确认 ACK 并释放租约。
+   > 报告任务验证结果与安全收尾结果，失败时说明停在哪一步。
 
-4. Start interacting with the agent!
+5. **查看画面与结果。** 连接设备后会启动独立 Viewer，策略卡片显示源码、回执、
+   验证和证据路径。需要停止时按 `Ctrl+Shift+X`，检查返回的停止 ACK。
+   **关闭 Viewer 只关闭画面，不停止控制。** 正常结束应完成停止和释放租约。
 
-   ```
-   > Can you find all instances of the word "TODO" in the project?
+## 场景、H1 与运行记录
 
-   🤖 The user wants to find all instances of "TODO". The `grep` tool is perfect for this. I will use it to search the current directory.
+退出当前 CLI 后，编辑 `.vibe/config.toml` 中 **`robo-mujoco` 对应的
+`[mcp_servers.env]`**，再重新启动。仅在父 shell 中 export 不足以保证变量传入
+MCP 子进程。
 
-   > grep(pattern="TODO", path=".")
+| 设置 | 用途 |
+| --- | --- |
+| `ROBO_SIM_TASK = "Lift"` / `"Stack"` | 选择任务；省略时为 Lift |
+| `ROBO_SIM_OBSERVATION_MODE = "rgbd"` | 相机观测；省略时原适配器默认 `privileged`，含物体真值，不能当作视觉评测 |
+| `ROBO_SIM_GEOMETRY_LIBRARY = "off"` / `"h1-v8-v9"` | 关闭或启用 H1；H1 仅用于 RGB-D Lift，Stack 保持 off |
+| `ROBO_SIM_SEED = "1201"` | 固定初始场景；省略时随机，不保证模型输出可复现 |
+| `ROBO_SIM_HEADLESS = "1"` | 不打开 Viewer，仍可生成证据和录像 |
 
-   ... (grep tool output) ...
+Stack 使用 [Stack 配置示例](examples/robo/stack-rgbd-off.toml)，任务可表述为：
 
-   🤖 I found the following "TODO" comments in your project.
-   ```
+> 仅操作 mujoco-panda-1 仿真。连接、获取租约并武装，根据 RGB-D 观测把红方块
+> 放到绿方块上，松爪并撤离。策略内和策略外分别验证 stack_objects，
+> 最后停止、确认 ACK 并释放租约，分别报告任务与收尾结果。
+
+Stack 验证还要求连续 20 个控制周期稳定；`verify()` 本身不推进物理时间。
+见 [Stack 验证契约](docs/robo-stack-pilot.md)。
+
+固定目标移动使用 `move_to`；原 `move_cartesian` 仍是重复归一化增量。
+回执中的到位状态在 `receipt["result"]["motion"]`，包含误差、周期数与退出原因。
+**到位不等于抓取或堆叠成功**，以独立任务验证为准；兜底收尾也不能计为模型自主完成。
+详见 [动作回执与反馈控制](docs/robo-target-motion.md)。
+
+默认记录位置如下；使用工具返回的 URI 可以定位本次实际文件：
+
+| 内容 | 默认位置 |
+| --- | --- |
+| Runtime 事件轨迹 | `<会话目录>/hardware-runs/<run_id>.jsonl` |
+| 策略源码与执行结果 | `<会话目录>/hardware-runs/policies/<policy_id>.py` / `.json` |
+| MP4 录像 | `<会话目录>/hardware-runs/recordings/robo-mujoco/` |
+| RGB / RGB-D 与控制周期证据 | `<会话目录>/hardware-runs/evidence/robo-mujoco/` |
+
+停止会将录像落盘，随后 `robo_observe` 的 `snapshot.state.recording_uri` 提供路径。
+关闭会话日志时，记录根目录为 `<项目>/.vibe/hardware-runs/<session_id>/`。
+若需要完整模型请求/响应审计，在 `[generation]` 中设置 `audit_dir` 为一个新的
+本地绝对路径：生成日志写入该目录的 `generation.jsonl`，Runtime 轨迹、证据和录像
+改写到该目录的 `hardware-runs/`；策略文件仍按工具返回的源码 URI 查找。
+审计含任务和模型上下文，默认保留在本地，不提交 Git。
+
+## 常见问题与开发验证
+
+| 现象 | 先检查 |
+| --- | --- |
+| 只有 `sim-arm-1`，没有 Panda | 检查项目配置是否受信任、`robo-mujoco` 是否启动；`sim-arm-1` 是协议测试设备，不是物理仿真 |
+| 提示缺少 robosuite / mujoco | 在仓库执行 `uv sync --extra simulator`，之后用 `uv run --no-sync` 启动 |
+| 有控制但没有窗口 | 检查 MCP 环境中的 `ROBO_SIM_HEADLESS`；Viewer 可独立关闭，画面缺失不等于设备停止 |
+| `motion` 字段错误或移动未到位 | 按完整 CommandReceipt 读取 `result.motion`；检查 `reason` 和误差，不把失败回执当作完成 |
+| 模型输出截断 | 保留完整性防护；确认 `limit_tokens=false`，没有显式 `--max-tokens` 或其他调用方 cap；再查 finish reason，服务端限制仍可能截断 |
+
+在仓库根目录运行相关检查（不调用模型）：
+
+```bash
+uv run --no-sync pytest tests/core/hardware tests/core/tools/builtins/test_robo.py \
+  tests/core/tools/builtins/test_robo_policy_contract.py \
+  tests/core/agent_loop/test_generation_guard.py tests/hardware_sim \
+  tests/app_server/test_tool_projection.py
+uv run --no-sync ruff check .
+uv run --no-sync pyright
+```
+
+更多资料：[本地运行手册](docs/robo-harness-local-runbook.md)、
+[RGB-D / H1 原件与坐标契约](docs/robo-h1-lift-runbook.md)、[贡献约束](AGENTS.md)。
+旧 H1 手册中的单次 backend smoke 和历史复放不等同于真实 CLI 自主验收；
+旧实验的 token 配额也不是本页推荐的交互配置。
+
+以下为继承自 Vibe 的通用 CLI 参考。源码安装同时提供 `robo` 和 `vibe` 别名；
+在本分支工作时可将示例中的 `vibe` 命令写成 `uv run --no-sync robo`。
 
 ## Usage
 
@@ -299,7 +410,7 @@ Robo includes a deterministic local arm (`sim-arm-1`) and the model-facing
 tools. Task-changing actions are expressed as bounded Python policies; the legacy
 single-action and sequence implementations remain internal compatibility paths and are
 not exposed to the model. Start the
-CLI with `uv run robo --workdir .` and ask it to discover, connect, lease, explicitly
+CLI with `uv run --no-sync robo --legacy-harness --workdir .` and ask it to discover, connect, lease, explicitly
 arm, and operate the simulated arm.
 
 For a visible Franka Panda simulation on macOS, install the optional simulator
@@ -469,7 +580,9 @@ theme = "dracula"
 
 ### API Key Configuration
 
-To use Vibe, you'll need a Mistral API key. You can obtain one by signing up at [https://console.mistral.ai](https://console.mistral.ai).
+For the default Mistral provider, you need a Mistral API key from
+[https://console.mistral.ai](https://console.mistral.ai). Custom providers use their
+own configured credentials; a Mistral key is not required for every Robo setup.
 
 You can configure your API key using `vibe --setup`, or through one of the methods below.
 
@@ -962,7 +1075,7 @@ The cost of that conservatism is that a worktree whose app-server was killed out
 
 ### Update Settings
 
-Vibe checks PyPI at most once per day during a session. When a newer version is found, the next launch shows an update prompt before opening the chat, offering to either update immediately (via `uv tool upgrade mistral-vibe` or `brew upgrade mistral-vibe`) or continue with the current version.
+Upstream Vibe checks PyPI at most once per day during a session. When a newer version is found, the next launch can offer an upstream package update. For this Robo source branch, keep `enable_update_checks = false` and update the intended Git branch explicitly after preserving local work; a PyPI/Homebrew Vibe upgrade is not an update of this Robo branch.
 
 Run `vibe --check-upgrade` to check PyPI immediately, prompt to install a newer version if one exists, and exit.
 
@@ -1041,8 +1154,3 @@ Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the [LICENSE](LICENSE) file for the full license text.
-
-Experimental Robo RGB-D Lift and the frozen RSI H1 geometry helper:
-[Mac runbook](docs/robo-h1-lift-runbook.md).
-
-For bounded real-CLI Lift sessions and opt-in regeneration of incomplete model responses, see [Robo CLI generation recovery](docs/robo-cli-generation-recovery.md). Regeneration and the project H1 switch remain off by default.

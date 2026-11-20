@@ -11,9 +11,9 @@ from vibe.core.identity import (
     IdentityGatewayUnauthorized,
     IdentityGatewayUnavailable,
     IdentityResult,
+    fetch_identity,
 )
 from vibe.core.identity_cache import IdentityCache
-from vibe.observability.logging import logger
 from vibe.utils.api_keys import resolve_api_key
 
 __all__ = [
@@ -76,19 +76,9 @@ class IdentityController:
         return _to_view(result) if result is not None else None
 
     async def _fetch(self, *, base_url: str, api_key: str) -> IdentityResult | None:
-        try:
-            return await self._gateway.read(base_url=base_url, api_key=api_key)
-        except IdentityGatewayUnauthorized:
-            logger.info(
-                "Identity endpoint rejected the API key (401/403); "
-                "the key may be invalid or expired."
-            )
-            return None
-        except IdentityGatewayUnavailable as exc:
-            logger.warning(
-                "Failed to fetch identity (%s)", type(exc).__name__, exc_info=exc
-            )
-            return None
+        return await fetch_identity(
+            base_url=base_url, api_key=api_key, gateway=self._gateway
+        )
 
 
 def _to_view(result: IdentityResult) -> IdentityView:

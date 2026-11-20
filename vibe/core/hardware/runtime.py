@@ -112,6 +112,11 @@ class HardwareRuntime:
     def simulated(cls, *, trace_dir: Path | None = None) -> HardwareRuntime:
         return cls(adapters=[DeterministicSimulatorAdapter()], trace_dir=trace_dir)
 
+    @property
+    def connected_device_ids(self) -> frozenset[str]:
+        """Read-only connection state for operator setup; never reconnect to inspect."""
+        return frozenset(self._connected)
+
     async def discover(self) -> list[DeviceCapabilityManifest]:
         async with self._discovery_lock:
             discovered: list[DeviceCapabilityManifest] = []

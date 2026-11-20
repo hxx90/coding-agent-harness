@@ -4,11 +4,11 @@ description: "Authoritative reference for Robo \u2014 the CLI agent you (the mod
 user-invocable: false
 ---
 
-# Vibe CLI Self-Awareness
+# Robo CLI Self-Awareness
 
 You are running inside **Robo**, a hardware-oriented CLI agent.
 This skill gives you full knowledge of the application internals so you can help
-the user understand, configure, and troubleshoot their Vibe installation.
+the user understand, configure, and troubleshoot their Robo installation.
 
 ## Going Deeper
 
@@ -20,7 +20,7 @@ https://docs.mistral.ai/vibe/code/overview for human-readable docs.
 
 ## VIBE_HOME
 
-The user's Vibe home directory defaults to `~/.vibe` but can be overridden via
+The user's Robo home directory defaults to `~/.vibe` but can be overridden via
 the `VIBE_HOME` environment variable. All user-level configuration, skills, tools,
 agents, prompts, logs, and session data live here.
 
@@ -49,7 +49,7 @@ agents, prompts, logs, and session data live here.
 
 ### Project-Local Configuration
 
-When in a trusted folder, Vibe also looks for project-local configuration:
+When in a trusted folder, Robo also looks for project-local configuration:
 - `.vibe/config.toml` - Project-specific config (overrides user config)
 - `.vibe/hooks.toml` - Project-specific hooks (requires trusted folder)
 - `.vibe/skills/` - Project-specific skills
@@ -65,7 +65,7 @@ tool's behavior and replace it with an equivalent skill.
 ### AGENTS.md Discovery
 
 `AGENTS.md` files provide directory-scoped instructions to the model. At startup,
-Vibe loads `~/.vibe/AGENTS.md` and every `AGENTS.md` from the project root up
+Robo loads `~/.vibe/AGENTS.md` and every `AGENTS.md` from the project root up
 through the trust chain. `AGENTS.md` files in subdirectories are discovered
 lazily: when `read_file` reads a file below the project root, any `AGENTS.md`
 between the file's parent and the project root is injected into
@@ -84,7 +84,7 @@ press. `Ctrl+Z` suspends on POSIX (resume with `fg`).
 
 ### Update
 
-Vibe never updates silently. With `enable_update_checks = true` (default), it
+Robo never updates silently. With `enable_update_checks = true` (default), it
 polls PyPI for `mistral-vibe` daily and prompts on the next launch when a
 newer release exists; accepting runs `uv tool upgrade mistral-vibe`, then
 `brew upgrade mistral-vibe` as a fallback. Disable via `enable_update_checks
@@ -131,7 +131,7 @@ message preview). The current title also drives the terminal tab/window title
 Local sessions are written under `~/.vibe/logs/session/` (override with
 `session_logging.save_dir`). Each session records the `cwd` it ran in. The
 `/resume` picker, `--continue`, and bare `--resume` (no id) are **scoped to the
-current folder**: only sessions whose `cwd` matches where Vibe is launched are
+current folder**: only sessions whose `cwd` matches where Robo is launched are
 listed, so the same directory shows its own history and nothing else. Switch
 folders to see a different set. The explicit `--resume <SESSION_ID>` form is
 **not** folder-scoped: it resolves the session by id regardless of which folder
@@ -143,12 +143,12 @@ config persistence target as other settings and also updates an existing
 session override immediately; the session file is synchronized when the next
 user message is sent. An explicit persistent target selected through `/config`
 changes only that layer. `/clear` starts an unpinned conversation that follows
-the current config again. If a selected model is no longer configured, Vibe
+the current config again. If a selected model is no longer configured, Robo
 falls back to the current default model.
 
 ## Configuration (config.toml)
 
-The configuration file uses TOML format. When it does not exist, Vibe uses its
+The configuration file uses TOML format. When it does not exist, Robo uses its
 built-in defaults and creates a sparse file on the first persisted setting.
 Settings can also be overridden via environment variables with the `VIBE_`
 prefix (e.g., `VIBE_ACTIVE_MODEL=local`).
@@ -209,10 +209,10 @@ active_tts_model = "voxtral-tts"
 
 Set `enable_otel = true` to export traces for agent, model, and tool operations
 over OTLP/HTTP. `enable_telemetry` must also be enabled. With no explicit
-endpoint, Vibe derives the telemetry endpoint and API key from the configured
+endpoint, Robo derives the telemetry endpoint and API key from the configured
 Mistral provider, except public regional API hosts that do not serve telemetry.
 
-To use another collector, set `otel_endpoint` to its base URL; Vibe appends
+To use another collector, set `otel_endpoint` to its base URL; Robo appends
 `/v1/traces`. Configure custom-collector authentication through the standard
 `OTEL_EXPORTER_OTLP_*` environment variables.
 
@@ -296,7 +296,7 @@ The built-in shell surface is controlled by the `managed_shell_tools_enabled` co
 field and the `vibe_cli_managed_shell_tools` GrowthBook experiment. The default variant
 keeps the legacy one-shot `bash` tool, including its existing Windows behavior.
 The managed variant exposes OS-native shell tools:
-POSIX systems, including WSL where Vibe runs as Linux, get managed `bash`,
+POSIX systems, including WSL where Robo runs as Linux, get managed `bash`,
 `bash_output`, `bash_stdin`, `bash_sessions`, and `bash_log_file`; native Windows
 gets `git_bash`, `git_bash_output`, `git_bash_stdin`, `git_bash_sessions`, and
 `git_bash_log_file` when Git Bash is available. If Git Bash is unavailable,
@@ -311,7 +311,7 @@ be driven with the matching stdin tool.
 POSIX `bash` reads permissions, allowlists, and denylists from `[tools.bash]`.
 Native Windows `git_bash` reads them from `[tools.git_bash]`; native Windows
 `powershell` reads them from `[tools.powershell]`. Neither Windows tool reads
-`[tools.bash]`. Git Bash is preferred when Vibe can resolve a usable `bash.exe`
+`[tools.bash]`. Git Bash is preferred when Robo can resolve a usable `bash.exe`
 from PATH, Git for Windows, or standard Git install locations. If Git Bash is
 unavailable, the PowerShell resolution order is `pwsh.exe`, then
 `powershell.exe`. `cmd.exe` is not used by the managed Windows shell tools.
@@ -320,7 +320,7 @@ Output polling uses byte offset cursors
 `max_inline_bytes` configures the default cap.
 
 **Special case — `find` command:** Even if `find` is in the bash allowlist,
-Vibe detects `-exec`, `-execdir`, `-ok`, and `-okdir` predicates and will
+Robo detects `-exec`, `-execdir`, `-ok`, and `-okdir` predicates and will
 prompt for user permission before running the command.
 
 #### File Tool Permission Resolution
@@ -397,7 +397,7 @@ Otherwise the server uses OAuth and starts browser login by default. Pass
 Use `vibe mcp remove <name>` to remove a server from the user configuration;
 stored OAuth credentials are deleted when available.
 
-Hosted OAuth MCP servers can also be added from inside Vibe:
+Hosted OAuth MCP servers can also be added from inside Robo:
 
 ```text
 /mcp add https://mcp.linear.app/mcp
@@ -445,7 +445,7 @@ HTTP MCP servers can use either static auth or OAuth:
 
 - Static auth: legacy `api_key_env` / `headers` keys still work and are
   promoted to `auth.type = "static"` internally.
-- OAuth auth: use `auth.type = "oauth"` with `scopes`. Vibe stores tokens
+- OAuth auth: use `auth.type = "oauth"` with `scopes`. Robo stores tokens
   in the OS keyring under `mcp-oauth:<alias>:tokens`, dynamic client info
   under `mcp-oauth:<alias>:client_info`, and config drift fingerprints under
   `mcp-oauth:<alias>:fingerprint`.
@@ -567,7 +567,7 @@ browser_auth_api_base_url = "https://connector.internal.example:443/api"
 browser_auth_allow_origin_rewrite = true
 ```
 
-Self-hosted deployments can point Vibe CLI upgrade and API-key links to their
+Self-hosted deployments can point Robo CLI upgrade and API-key links to their
 Le Chat web deployment, where the Vibe API key is managed:
 
 ```toml
@@ -678,7 +678,7 @@ discriminated by `hook_event_name`:
 `timeout` kills the whole process tree.
 
 A hook signals back via its **exit code** and **stdout** (stderr is reserved
-for diagnostics — Vibe never parses it for control):
+for diagnostics — Robo never parses it for control):
 
 | Exit | Stdout | Behavior |
 |---|---|---|
@@ -721,7 +721,7 @@ will produce ``hook 'guard': guard: refused...`` downstream.
 Event-specific payloads:
 
 - `hook_specific_output.tool_input` (`pre_tool`): full replacement of the
-  model's arguments. Vibe re-validates against the tool's schema **after each
+  model's arguments. Robo re-validates against the tool's schema **after each
   rewriting hook** — the first invalid rewrite aborts the chain and
   synthesizes a denial attributing the failure to that hook. Rewrites
   compose: hook N receives `tool_input` as rewritten by hooks 1..N-1.
@@ -771,15 +771,15 @@ vibe -p TEXT --agent lean --yolo      # Lean mode with all tool calls approved
 vibe --agent NAME                   # Select agent profile (falls back to `default_agent` config)
 vibe --auto-approve / --yolo         # Approve all tool calls for the selected agent
 vibe --workdir DIR                  # Change working directory
-vibe --worktree NAME                # Create/reuse a git worktree under $VIBE_HOME/worktrees on branch NAME and run inside it. Auto-cleanup only for worktrees Vibe created this run and only after a session started; reused worktrees and attached (pre-existing) branches are kept unless confirmed. -p sessions keep worktrees. Ignored with --setup/--check-upgrade.
-vibe --worktree                     # Same, but Vibe picks an unused name from the prompt (a random slug when there is no prompt) on a vibe/<name> branch, and never reuses an existing worktree. The prompt must precede the flag or follow a `--`, since --worktree otherwise reads it as NAME.
+vibe --worktree NAME                # Create/reuse a git worktree under $VIBE_HOME/worktrees on branch NAME and run inside it. Auto-cleanup only for worktrees Robo created this run and only after a session started; reused worktrees and attached (pre-existing) branches are kept unless confirmed. -p sessions keep worktrees. Ignored with --setup/--check-upgrade.
+vibe --worktree                     # Same, but Robo picks an unused name from the prompt (a random slug when there is no prompt) on a vibe/<name> branch, and never reuses an existing worktree. The prompt must precede the flag or follow a `--`, since --worktree otherwise reads it as NAME.
 vibe --add-dir DIR                  # Extra working dir loaded for context (repeatable). Implicitly trusted.
 vibe --trust                        # Trust cwd for this invocation only (not persisted). Skips the trust prompt.
 vibe -c / --continue                # Continue most recent session in this terminal (TTY-scoped, falls back to latest in cwd)
 vibe --resume [SESSION_ID]          # Resume a specific session
 vibe -v / --version                 # Show version
 vibe --setup                        # Run onboarding/setup
-vibe update / vibe --check-upgrade  # Check for a Vibe update now, prompt to install it, and exit
+vibe update / vibe --check-upgrade  # Check for a Robo update now, prompt to install it, and exit
 vibe --max-turns N                  # Max assistant turns (programmatic mode)
 vibe --max-price DOLLARS            # Max cost limit (programmatic mode)
 vibe --max-tokens N                 # Max total session tokens (programmatic mode)
@@ -1048,7 +1048,7 @@ automatically into MCP server processes and are reserved.
 
 ### Foreign Plugin Formats
 
-Vibe also adapts non-native plugin formats:
+Robo also adapts non-native plugin formats:
 
 | Format | Detection marker |
 |---|---|
@@ -1140,7 +1140,7 @@ offered inline, and no popup is shown.
 
 ## Environment Variables
 
-- `VIBE_HOME` - Override the Vibe home directory (default: `~/.vibe`)
+- `VIBE_HOME` - Override the Robo home directory (default: `~/.vibe`)
 - `MISTRAL_API_KEY` - API key for Mistral provider
 - `VIBE_ACTIVE_MODEL` - Override active model
 - `VIBE_*` - Any config field can be overridden with the `VIBE_` prefix
@@ -1167,7 +1167,7 @@ This file is loaded on startup and its values are injected into the environment.
 
 ## Trusted Folders
 
-Vibe uses a trust system to prevent executing project-local config from untrusted
+Robo uses a trust system to prevent executing project-local config from untrusted
 directories. The trust database is stored in `~/.vibe/trusted_folders.toml`.
 Project-local config (`.vibe/` directory) is only loaded when the current
 directory is explicitly trusted.
@@ -1195,10 +1195,10 @@ Do not use tools (read, write_file, bash cat/echo, etc.) to access these files.
 
 ## How to Modify Configuration
 
-To help the user modify their Vibe configuration:
+To help the user modify their Robo configuration:
 
 1. **Read current config when present**: Read `~/.vibe/config.toml` (or the path
-   from `VIBE_HOME` if set). A missing file means Vibe is using built-in defaults.
+   from `VIBE_HOME` if set). A missing file means Robo is using built-in defaults.
 2. **Create a backup when present**: Before editing an existing file, copy it to
    `config.toml.bak` in the same directory. This applies to any existing config
    file you are about to modify (`config.toml`, `trusted_folders.toml`, agent

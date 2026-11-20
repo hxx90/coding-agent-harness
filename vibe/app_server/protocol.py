@@ -43,6 +43,8 @@ from vibe.app_server.models import (
     ConnectorCounts,
     ContentBlock,
     DebugLogPage,
+    HardwareDeviceOutput,
+    HardwareSnapshotOutput,
     IdentityView,
     JsonPatchOperation,
     MCPState,
@@ -126,6 +128,8 @@ SERVER_METHODS: tuple[str, ...] = (
     "feedback/record",
     "feedback/shouldShow",
     "hardware/stop",
+    "hardware/setup",
+    "hardware/setup/cancel",
     "session/history/get",
     "identity/read",
     "loops/clear",
@@ -461,6 +465,41 @@ class SessionStopResponse(ProtocolModel):
 class HardwareStopParams(ProtocolModel):
     session_id: str
     reason: str = "operator emergency stop"
+
+
+class HardwareSetupParams(ProtocolModel):
+    session_id: str
+    operation_id: str | None = None
+    device_id: str | None = None
+    connect: bool = False
+
+    @model_validator(mode="after")
+    def _require_device(self) -> Self:
+        if self.connect and not self.device_id:
+            raise ValueError("Connecting requires a device_id")
+        return self
+
+
+class HardwareSetupResponse(ProtocolModel):
+    devices: list[HardwareDeviceOutput] = Field(default_factory=list)
+    selected_device_id: str | None = None
+    selection_confirmed: bool = False
+    cancelled: bool = False
+    snapshot: HardwareSnapshotOutput | None = None
+    model_name: str = ""
+    model_configured: bool = False
+    # This endpoint checks configuration; it never sends a paid model request.
+    model_connection_tested: bool = False
+    issues: list[str] = Field(default_factory=list)
+
+
+class HardwareSetupCancelParams(ProtocolModel):
+    session_id: str
+    operation_id: str
+
+
+class HardwareSetupCancelResponse(ProtocolModel):
+    settled: bool
 
 
 class HardwareStopReceipt(ProtocolModel):

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncGenerator
+from contextlib import aclosing
 from pathlib import Path
 import subprocess
 from typing import Literal
@@ -36,6 +37,7 @@ from vibe.core.tools.base import (
     ToolError,
     ToolPermission,
 )
+from vibe.core.tools.builtins._robo_progress import stream_policy_progress
 from vibe.core.tools.models import PermissionContext
 from vibe.core.tools.ui import ToolCallDisplay, ToolResultDisplay, ToolUIData
 from vibe.core.types import FileImageSource, ImageAttachment, ToolStreamEvent
@@ -333,12 +335,25 @@ class RoboRunPolicy(
             timeout_seconds=config.timeout_seconds,
         )
         try:
-            result = await runner.run(
+            operation = runner.run(
                 args.code,
                 device_id=args.device_id,
                 lease_id=args.lease_id,
                 run_id=run_id,
             )
+            async with aclosing(
+                stream_policy_progress(
+                    operation,
+                    runtime=_runtime(ctx),
+                    run_id=run_id,
+                    tool_call_id=ctx.tool_call_id if ctx else run_id,
+                )
+            ) as progress:
+                async for item in progress:
+                    if isinstance(item, ToolStreamEvent):
+                        yield item
+                    else:
+                        yield RoboRunPolicyResult(policy=item)
         except HardwarePolicyError as exc:
             location = (
                 f"line={exc.line},column={exc.column}" if exc.line is not None else None
@@ -356,7 +371,6 @@ class RoboRunPolicy(
             raise ToolError("Robo code policy failed", model_detail=detail) from exc
         except HardwareRuntimeError as exc:
             raise ToolError(str(exc), model_detail=f"error_code={exc.code}") from exc
-        yield RoboRunPolicyResult(policy=result)
 
     def get_result_images(self, result: RoboRunPolicyResult) -> list[ImageAttachment]:
         evidence = list(result.policy.snapshot.evidence)

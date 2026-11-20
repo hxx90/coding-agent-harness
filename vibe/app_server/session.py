@@ -69,6 +69,10 @@ from vibe.app_server.protocol import (
     ClientToolWriteTextFileParams,
     ContextInjectParams,
     ContextInjectResponse,
+    HardwareSetupCancelParams,
+    HardwareSetupCancelResponse,
+    HardwareSetupParams,
+    HardwareSetupResponse,
     HardwareStopParams,
     HardwareStopResponse,
     Notification,
@@ -678,6 +682,41 @@ class AppServerSession:  # noqa: PLR0904
             if self._interrupt_already_settled(exc):
                 return
             raise
+
+    async def setup_hardware(
+        self,
+        device_id: str | None = None,
+        *,
+        connect: bool = False,
+        operation_id: str | None = None,
+    ) -> HardwareSetupResponse:
+        client = await self._ensure_attached()
+        return validate_wire(
+            HardwareSetupResponse,
+            await client.request(
+                "hardware/setup",
+                HardwareSetupParams(
+                    session_id=self.session_id,
+                    device_id=device_id,
+                    connect=connect,
+                    operation_id=operation_id,
+                ),
+            ),
+        )
+
+    async def cancel_hardware_setup(
+        self, operation_id: str
+    ) -> HardwareSetupCancelResponse:
+        client = await self._ensure_attached()
+        return validate_wire(
+            HardwareSetupCancelResponse,
+            await client.request(
+                "hardware/setup/cancel",
+                HardwareSetupCancelParams(
+                    session_id=self.session_id, operation_id=operation_id
+                ),
+            ),
+        )
 
     async def stop_hardware(
         self, reason: str = "operator emergency stop"

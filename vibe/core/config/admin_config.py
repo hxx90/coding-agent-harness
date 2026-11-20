@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from enum import StrEnum, auto
 
@@ -16,6 +17,8 @@ MANAGED_CONFIG_PATH = "/api/v1/code/managed-config"
 
 # Per-request timeout for the managed-config HTTP call.
 MANAGED_CONFIG_TIMEOUT = 2.0
+# Bound the entire optional fetch, including retries and backoff.
+MANAGED_CONFIG_TOTAL_TIMEOUT = 2.0
 
 # Number of attempts before giving up (1 initial + retries).
 MANAGED_CONFIG_RETRY_TRIES = 3
@@ -88,7 +91,10 @@ async def fetch_managed_config(base_url: str, api_key: str) -> ManagedConfigResu
     url = f"{base_url.rstrip('/')}{MANAGED_CONFIG_PATH}"
     headers = {"Authorization": f"Bearer {api_key}"}
     try:
-        response = await _fetch_response(url, headers)
+        async with asyncio.timeout(MANAGED_CONFIG_TOTAL_TIMEOUT):
+            response = await _fetch_response(url, headers)
+    except TimeoutError:
+        return ManagedConfigResult(error="Managed config fetch timed out")
     except httpx.HTTPStatusError as exc:
         logger.debug(
             "Managed config fetch status=%s url=%s", exc.response.status_code, url

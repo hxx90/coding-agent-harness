@@ -622,7 +622,7 @@ class ResourceRequestHandler:
         self._require_session(params.session_id)
         # Best-effort: an admin-fetch failure must never break the user's reload.
         # asyncio.timeout caps the full retry budget so /reload stays responsive;
-        # startup still uses the uncapped retry policy via apply_admin_config().
+        # the fetch itself also bounds retries during startup.
         try:
             async with asyncio.timeout(MANAGED_CONFIG_TIMEOUT * 1.5):
                 self._report_admin_config_outcome(await self._refresh_admin_layer())

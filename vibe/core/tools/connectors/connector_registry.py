@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncGenerator
+from concurrent.futures import Future
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from enum import StrEnum
 import hashlib
 import json
 import os
 import re
+from threading import Lock
 import time
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -31,7 +34,10 @@ from vibe.utils.http import VibeAsyncHTTPClient, build_ssl_context
 if TYPE_CHECKING:
     from vibe.core.types import ToolResultEvent
 
-_BOOTSTRAP_TIMEOUT = 30.0
+# Optional discovery is on the startup/configuration critical path. Explicit
+# refreshes can wait longer without imposing that delay on ordinary startup.
+_BOOTSTRAP_TIMEOUT = 2.0
+_BOOTSTRAP_REFRESH_TIMEOUT = 30.0
 _BOOTSTRAP_CACHE_TTL_SECONDS = 10 * 60
 _SERVER_ERROR_STATUS = 500
 
@@ -247,6 +253,8 @@ def _format_connector_bootstrap_errors(bootstrap_errors: Any) -> str:
 
 def _bootstrap_error_message(exc: Exception) -> str:
     """Return the real backend failure so developers can diagnose it."""
+    if isinstance(exc, TimeoutError | httpx.TimeoutException):
+        return "Workspace connector discovery timed out. Retry with `/reload`."
     if http_err := _unwrap_http_status_error(exc):
         status = http_err.response.status_code
         try:
@@ -430,7 +438,8 @@ class ConnectorRegistry:
         self._alias_to_id: dict[str, str] = {}
         self._bootstrap_error: str | None = None
         self._connector_errors: dict[str, str] = {}
-        self._discover_lock = asyncio.Lock()
+        self._discovery_guard = Lock()
+        self._discovery_done: Future[None] | None = None
         self._host_managed = catalog_entries is not None
         self._host_catalog_entries = catalog_entries
         if catalog_entries is not None:
@@ -514,7 +523,7 @@ class ConnectorRegistry:
             "supports_mcp": "true",
         }
         async with VibeAsyncHTTPClient(
-            timeout=_BOOTSTRAP_TIMEOUT, verify=build_ssl_context()
+            timeout=_BOOTSTRAP_REFRESH_TIMEOUT, verify=build_ssl_context()
         ) as http:
             response = await http.get(url, headers=headers, params=params)
             response.raise_for_status()
@@ -575,12 +584,34 @@ class ConnectorRegistry:
                 )
         return tools_map
 
+    @asynccontextmanager
+    async def _discovery_turn(self) -> AsyncGenerator[None]:
+        # Config reloads share this registry across worker-thread event loops.
+        # Only guard the synchronous handoff; never block a loop on discovery.
+        while True:
+            with self._discovery_guard:
+                pending = self._discovery_done
+                if pending is None:
+                    done: Future[None] = Future()
+                    self._discovery_done = done
+                    break
+            # wrap_future wakes each waiter's own loop thread-safely. Shield
+            # prevents one cancelled waiter from cancelling the shared signal.
+            await asyncio.shield(asyncio.wrap_future(pending))
+        try:
+            yield
+        finally:
+            with self._discovery_guard:
+                self._discovery_done = None
+            # Notify outside the guard, including when discovery was cancelled.
+            done.set_result(None)
+
     async def _discover_all(
         self, *, force_refresh: bool = False
     ) -> dict[str, type[BaseTool]]:
         if self._host_managed:
             return self._all_cached_tools()
-        async with self._discover_lock:
+        async with self._discovery_turn():
             # Re-check under lock — another coroutine may have finished
             # discovery while we waited.
             if self._cache is not None and not force_refresh:
@@ -592,7 +623,12 @@ class ConnectorRegistry:
             data = None if force_refresh else self._read_cached_bootstrap()
             try:
                 if data is None:
-                    data = await self._fetch_bootstrap()
+                    async with asyncio.timeout(
+                        _BOOTSTRAP_REFRESH_TIMEOUT
+                        if force_refresh
+                        else _BOOTSTRAP_TIMEOUT
+                    ):
+                        data = await self._fetch_bootstrap()
                     self._write_cached_bootstrap(data)
             except Exception as exc:
                 logger.warning("Failed to bootstrap connectors", exc_info=True)

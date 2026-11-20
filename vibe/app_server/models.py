@@ -1152,6 +1152,21 @@ class PublicTurnQueue(ProtocolModel):
     max_items: int = Field(default=TURN_QUEUE_MAX_ITEMS, ge=1, strict=True)
 
 
+class HardwareCleanupDevice(ProtocolModel):
+    device_id: str
+    stop: HardwareStopReceiptOutput | None = None
+    release: Literal["released", "no_lease", "unconfirmed"] = "unconfirmed"
+    verification: HardwareVerificationOutput | None = None
+    errors: dict[str, str] = Field(default_factory=dict)
+
+
+class HardwareCleanupResult(ProtocolModel):
+    """System cleanup evidence, separate from actor-requested tool effects."""
+
+    devices: list[HardwareCleanupDevice] = Field(default_factory=list)
+    error: str | None = None
+
+
 class PublicTurn(ProtocolModel):
     id: str
     session_id: str
@@ -1161,6 +1176,7 @@ class PublicTurn(ProtocolModel):
     error: PublicError | None = None
     stop_reason: PublicTurnStopReason | None = None
     queue_item_id: str | None = None
+    hardware_cleanup: HardwareCleanupResult | None = None
 
 
 class PublicSessionState(ProtocolModel):

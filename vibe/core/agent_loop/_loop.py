@@ -355,6 +355,7 @@ def _close_backend_in_background(backend: BackendLike) -> None:
 class AgentTurnOptions:
     retry_sink: RetryObserver | None = None
     injected: bool = False
+    hardware_cleanup_sink: Callable[[dict[str, object]], None] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1691,6 +1692,8 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
             if self.config.generation.enabled:
                 cleanup = await self.hardware_runtime.bounded_cleanup()
                 self.generation.audit("cleanup", result=cleanup)
+                if options.hardware_cleanup_sink is not None:
+                    options.hardware_cleanup_sink(cleanup)
             self._active_turn = None
 
     @property
@@ -3237,7 +3240,11 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
             "request_context", model=model.model_dump(mode="json"), streaming=False
         )
         output_cap, reservation = self.generation.reserve(
-            backend_messages, tools, self._max_tokens
+            backend_messages,
+            tools,
+            self._max_tokens
+            if self._max_tokens is not None
+            else model.max_output_tokens,
         )
         result = None
         call_error = None
@@ -3376,7 +3383,11 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
             streaming=True,
         )
         output_cap, reservation = self.generation.reserve(
-            backend_messages, available_tools, self._max_tokens
+            backend_messages,
+            available_tools,
+            self._max_tokens
+            if self._max_tokens is not None
+            else active_model.max_output_tokens,
         )
         call_error = None
         stream_finished = False

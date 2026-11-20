@@ -119,6 +119,7 @@ def openai_response(
     return {
         "id": response_id,
         "object": "response",
+        "status": "completed",
         "created_at": 1234567890,
         "model": model,
         "output": output,

@@ -166,6 +166,7 @@ from vibe.cli.textual_ui.widgets.compact import CompactMessage
 from vibe.cli.textual_ui.widgets.context_progress import ContextProgress, TokenState
 from vibe.cli.textual_ui.widgets.debug_console import DebugConsole
 from vibe.cli.textual_ui.widgets.feedback_bar import FeedbackBar
+from vibe.cli.textual_ui.widgets.hardware_progress import HardwareProgressPanel
 from vibe.cli.textual_ui.widgets.inline_notice import InlineNotice
 from vibe.cli.textual_ui.widgets.links import normalize_url
 from vibe.cli.textual_ui.widgets.load_more import HistoryLoadMoreRequested
@@ -1108,6 +1109,8 @@ class VibeApp(App):  # noqa: PLR0904
             )
             yield self._banner
             yield VerticalGroup(id="messages")
+
+        yield HardwareProgressPanel()
 
         with Horizontal(id="loading-area"):
             yield NarratorStatus(self._narrator_manager)
@@ -2862,6 +2865,7 @@ class VibeApp(App):  # noqa: PLR0904
             await self._handle_turn_event(event)
 
     async def _handle_turn_event(self, event: AppServerEvent) -> None:
+        self.query_one(HardwareProgressPanel).handle_event(event)
         if isinstance(event, SessionSnapshot):
             await self._queue.reconcile_snapshot(event.state)
         elif (
@@ -3941,6 +3945,16 @@ class VibeApp(App):  # noqa: PLR0904
             )
         await self._reload_config()
 
+    async def _show_robot(self, **kwargs: Any) -> None:
+        from vibe.cli.textual_ui.screens.robot import RobotScreen
+
+        self.push_screen(
+            RobotScreen(
+                self.app_server.setup_hardware,
+                cancel=self.app_server.cancel_hardware_setup,
+            )
+        )
+
     async def _show_model(self, **kwargs: Any) -> None:
         """Switch to the model picker in the bottom panel."""
         if self._current_bottom_app == BottomApp.ModelPicker:
@@ -4469,6 +4483,7 @@ class VibeApp(App):  # noqa: PLR0904
         history also needs clearing.
         """
         self._reset_ui_state()
+        self.query_one(HardwareProgressPanel).reset()
         if self._chat_input_container:
             self._chat_input_container.set_custom_border(None)
         if self.event_handler:
@@ -5374,7 +5389,9 @@ class VibeApp(App):  # noqa: PLR0904
         if action != "interrupt":
             return True
         screen_id = self.screen.id
-        if screen_id is not None and screen_id.startswith("config-"):
+        if screen_id is not None and (
+            screen_id.startswith("config-") or screen_id == "robot-setup"
+        ):
             return False
         containers = self.query(ChatInputContainer)
         if not containers:

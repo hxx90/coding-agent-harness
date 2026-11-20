@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Protocol
 
 import httpx
@@ -8,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from vibe.observability.logging import logger
 from vibe.utils.http import VibeAsyncHTTPClient, build_ssl_context
 
+_IDENTITY_TIMEOUT = 2.0
 _IDENTITY_PATH = "/users/me"
 
 
@@ -88,7 +90,15 @@ async def fetch_identity(
     """
     gateway = gateway or HttpIdentityGateway()
     try:
-        return await gateway.read(base_url=base_url, api_key=api_key, timeout=timeout)
+        async with asyncio.timeout(
+            timeout if timeout is not None else _IDENTITY_TIMEOUT
+        ):
+            return await gateway.read(
+                base_url=base_url, api_key=api_key, timeout=timeout
+            )
+    except TimeoutError:
+        logger.debug("Identity lookup timed out")
+        return None
     except IdentityGatewayUnauthorized:
         logger.info(
             "Identity endpoint rejected the API key (401/403); "

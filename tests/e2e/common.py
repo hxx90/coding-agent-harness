@@ -83,7 +83,7 @@ def wait_for_request_count_while_draining_child_output(
         if request_count_getter() >= expected_count:
             return
         try:
-            child.expect(r"\S", timeout=0.05)
+            child.read_nonblocking(size=65536, timeout=0.05)
         except pexpect.TIMEOUT:
             pass
     rendered_tail = strip_ansi(captured.getvalue())[-1200:]
@@ -105,7 +105,10 @@ def wait_for_rendered_text(
         if needle in strip_ansi(captured.getvalue()):
             return
         try:
-            child.expect(r"\S", timeout=0.1)
+            # Drain a chunk instead of consuming one character from expect's
+            # buffer. Redraw-heavy TUIs can otherwise leave the final reply in
+            # the PTY while we repeatedly scan an ever-growing captured log.
+            child.read_nonblocking(size=65536, timeout=0.1)
         except pexpect.TIMEOUT:
             pass
         except pexpect.EOF as exc:

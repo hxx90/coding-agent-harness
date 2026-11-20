@@ -152,6 +152,17 @@ def _build_unified_system_instructions(
     # core appends its capability sections after this text, keeping the docs
     # above skills/plugins in the final prompt.
     instructions = build_vibe_code_system_instructions(variant=config.system_prompt_id)
+    # Keep the SDK's variant-specific guidance, but use this application's
+    # identity. Do this before appending user/project docs, which are verbatim.
+    instructions = instructions.replace(
+        "You are Mistral Vibe, a CLI coding agent built by Mistral AI.",
+        "You are Robo, a hardware-oriented CLI agent.",
+        1,
+    ).replace(
+        "You are Mistral Vibe, an interactive coding agent.",
+        "You are Robo, an interactive hardware and coding agent.",
+        1,
+    )
     if config.include_project_context:
         agents_md_section = get_agents_md_section(
             harness_files.load_user_doc(), harness_files.load_project_docs()

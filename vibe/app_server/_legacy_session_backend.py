@@ -65,6 +65,10 @@ from vibe.app_server.protocol import (
     ContextInjectResponse,
     EmptyResponse,
     EventNotificationParams,
+    HardwareSetupCancelParams,
+    HardwareSetupCancelResponse,
+    HardwareSetupParams,
+    HardwareSetupResponse,
     HardwareStopParams,
     HardwareStopReceipt,
     HardwareStopResponse,
@@ -260,6 +264,10 @@ class LegacySessionBackend:
     connector_selection: ResolvedConnectorSelection | None = None
     created_worktree: PreparedWorktree | None = field(default=None, init=False)
     _closed: bool = field(default=False, init=False, repr=False)
+    _selected_robot: str | None = field(default=None, init=False, repr=False)
+    _robot_setup_operation: (
+        tuple[str | None, asyncio.Task[HardwareSetupResponse], asyncio.Event] | None
+    ) = field(default=None, init=False, repr=False)
     _projection: ClientProjection | None = field(default=None, init=False, repr=False)
     _events: asyncio.Queue[_QueuedEvent] = field(
         default_factory=lambda: asyncio.Queue(maxsize=256), init=False, repr=False
@@ -793,6 +801,72 @@ class LegacySessionBackend:
     ) -> SessionBackendResult[TurnInterruptResponse]:
         return await self._request("turn/interrupt", params, TurnInterruptResponse)
 
+    async def setup_hardware(
+        self, params: HardwareSetupParams
+    ) -> SessionBackendResult[HardwareSetupResponse]:
+        from vibe.app_server._robot_setup import commit_robot_selection, setup_robot
+
+        if params.session_id != self.session_id:
+            raise SessionBackendError(
+                ProtocolErrorCode.NOT_FOUND, "Hardware session not found"
+            )
+        self._require_mcp_idle()
+        with self.session.execution.reserve(
+            SessionExecutionKind.LIFECYCLE, "robot-setup"
+        ):
+            task = asyncio.create_task(
+                setup_robot(self.session.agent_loop, params, self._selected_robot)
+            )
+            finished = asyncio.Event()
+            self._robot_setup_operation = (params.operation_id, task, finished)
+            try:
+                try:
+                    response = await task
+                except asyncio.CancelledError:
+                    current = asyncio.current_task()
+                    if current is not None and current.cancelling():
+                        raise
+                    response = HardwareSetupResponse(
+                        selected_device_id=self._selected_robot,
+                        cancelled=True,
+                        issues=["机器人连接检查已取消。"],
+                    )
+                if response.snapshot is not None:
+                    # Cancel targets the I/O child, never interrupts this commit.
+                    await commit_robot_selection(
+                        self.session.agent_loop, response.snapshot.device_id
+                    )
+                    response.selected_device_id = response.snapshot.device_id
+                    response.selection_confirmed = True
+                self._selected_robot = response.selected_device_id
+            finally:
+                self._robot_setup_operation = None
+                finished.set()
+        return SessionBackendResult(response=response)
+
+    async def cancel_hardware_setup(
+        self, params: HardwareSetupCancelParams
+    ) -> SessionBackendResult[HardwareSetupCancelResponse]:
+        if params.session_id != self.session_id:
+            raise SessionBackendError(
+                ProtocolErrorCode.NOT_FOUND, "Hardware session not found"
+            )
+        operation = self._robot_setup_operation
+        if operation is None or operation[0] != params.operation_id:
+            return SessionBackendResult(
+                response=HardwareSetupCancelResponse(settled=False)
+            )
+        _, task, finished = operation
+        if not task.done() and not task.cancelling():
+            task.cancel()
+        try:
+            await asyncio.wait_for(finished.wait(), timeout=5)
+        except TimeoutError as exc:
+            raise SessionBackendError(
+                ProtocolErrorCode.CONFLICT, "Robot setup cancellation is still pending"
+            ) from exc
+        return SessionBackendResult(response=HardwareSetupCancelResponse(settled=True))
+
     async def stop_hardware(
         self, params: HardwareStopParams
     ) -> SessionBackendResult[HardwareStopResponse]:
@@ -881,6 +955,8 @@ class LegacySessionBackend:
             dispatched = await self.handler.dispatch(method, raw_params)
         except RequestFailure as exc:
             raise SessionBackendError(exc.code, str(exc), exc.data) from exc
+        if isinstance(dispatched.response, SessionHistoryClearResponse):
+            self._selected_robot = None
         if isinstance(
             dispatched.response,
             SessionHistoryClearResponse

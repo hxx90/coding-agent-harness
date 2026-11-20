@@ -57,6 +57,11 @@ class CommandRegistry:
                 description="Select active model",
                 handler="_show_model",
             ),
+            "robot": Command(
+                aliases=frozenset(["/robot"]),
+                description="Select a robot, connect, and inspect capabilities and observations",
+                handler="_show_robot",
+            ),
             "skills": Command(
                 aliases=frozenset(["/skills"]),
                 description="Browse, import, and manage skills",

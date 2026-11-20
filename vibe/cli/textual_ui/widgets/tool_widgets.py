@@ -690,7 +690,7 @@ class WebFetchResultWidget(ToolResultWidget[WebFetchOutput]):
 
 
 class HardwareResultWidget(ToolResultWidget[HardwareOutput]):
-    COLLAPSIBLE = False
+    COLLAPSIBLE = True
 
     def compose(self) -> ComposeResult:
         yield from self._yield_advisories()

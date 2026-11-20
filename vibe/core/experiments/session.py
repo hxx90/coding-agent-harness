@@ -25,7 +25,8 @@ if TYPE_CHECKING:
     from vibe.core.session.session_logger import SessionLogger
     from vibe.core.telemetry.types import LaunchContext
 
-EXPERIMENT_IDENTITY_TIMEOUT_S: Final = 10.0
+# Optional plan metadata must not hold startup/resume for long network retries.
+EXPERIMENT_IDENTITY_TIMEOUT_S: Final = 2.0
 
 IdentityResolver = Callable[..., Awaitable[IdentityResult | None]]
 WhoAmIResolver = Callable[..., Awaitable[WhoAmIResult | None]]
@@ -72,18 +73,23 @@ async def _fetch_plan_attributes(
     provider, api_key = provider_and_key
     _resolve_identity = resolve_identity or fetch_identity
     _resolve_whoami = resolve_whoami or fetch_whoami
-    identity, whoami = await asyncio.gather(
-        _resolve_identity(
-            base_url=provider.api_base,
-            api_key=api_key,
-            timeout=EXPERIMENT_IDENTITY_TIMEOUT_S,
-        ),
-        _resolve_whoami(
-            base_url=config.console_base_url,
-            api_key=api_key,
-            timeout=EXPERIMENT_IDENTITY_TIMEOUT_S,
-        ),
-    )
+    try:
+        async with asyncio.timeout(EXPERIMENT_IDENTITY_TIMEOUT_S):
+            identity, whoami = await asyncio.gather(
+                _resolve_identity(
+                    base_url=provider.api_base,
+                    api_key=api_key,
+                    timeout=EXPERIMENT_IDENTITY_TIMEOUT_S,
+                ),
+                _resolve_whoami(
+                    base_url=config.console_base_url,
+                    api_key=api_key,
+                    timeout=EXPERIMENT_IDENTITY_TIMEOUT_S,
+                ),
+            )
+    except TimeoutError:
+        logger.debug("Plan metadata lookup timed out")
+        identity, whoami = None, None
     logger.debug(
         "GrowthBook experiment attributes: identity_fetched=%s whoami_fetched=%s",
         identity is not None,

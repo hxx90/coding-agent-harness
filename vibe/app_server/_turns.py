@@ -16,6 +16,7 @@ from vibe.app_server._execution import (
     SessionExecutionKind,
     cancel_tasks,
 )
+from vibe.app_server._hardware_cleanup import project_hardware_cleanup
 from vibe.app_server._model import ProtocolModel
 from vibe.app_server._projection import project_agents, project_stats
 from vibe.app_server._projector import EventProjector, ProjectedUpdate
@@ -37,6 +38,7 @@ from vibe.app_server.models import (
     CallbackOutput,
     EffectDetail,
     EffectState,
+    HardwareCleanupResult,
     MentionStats,
     PublicCallbackEntry,
     PublicError,
@@ -554,7 +556,7 @@ class TurnController:  # noqa: PLR0904
             return None
         return self._after_queue_reset_response(self._agent_loop.session_id)
 
-    async def _run_turn(
+    async def _run_turn(  # noqa: PLR0915 - one turn lifecycle, including terminal cleanup projection
         self,
         turn: PublicTurn,
         prompt: str,
@@ -570,6 +572,8 @@ class TurnController:  # noqa: PLR0904
         status = PublicTurnStatus.COMPLETED
         error: PublicError | None = None
         stop_reason: PublicTurnStopReason | None = None
+        cleanup_results: list[dict[str, object]] = []
+
         try:
             await self._inject_queued_contexts(queued_contexts)
             self._record_mentions(params.mention_stats, params.client_user_message_id)
@@ -585,7 +589,9 @@ class TurnController:  # noqa: PLR0904
                     subagent_runner=self._subagent_runner,
                     tool_io=self._tool_io,
                     turn_options=AgentTurnOptions(
-                        retry_sink=self._emit_retrying, injected=params.injected
+                        retry_sink=self._emit_retrying,
+                        injected=params.injected,
+                        hardware_cleanup_sink=cleanup_results.append,
                     ),
                 )
             ) as events:
@@ -623,7 +629,14 @@ class TurnController:  # noqa: PLR0904
         finally:
             try:
                 await self._finalize_turn(
-                    turn, status, error, stop_reason, session_execution
+                    turn,
+                    status,
+                    error,
+                    stop_reason,
+                    session_execution,
+                    project_hardware_cleanup(cleanup_results[-1])
+                    if cleanup_results
+                    else None,
                 )
             finally:
                 self._scheduled_loop_id = None
@@ -667,6 +680,7 @@ class TurnController:  # noqa: PLR0904
         error: PublicError | None,
         stop_reason: PublicTurnStopReason | None,
         session_execution: ActiveSessionExecution,
+        hardware_cleanup: HardwareCleanupResult | None = None,
     ) -> None:
         await self._clear_retrying()
         projector = self._projector
@@ -683,6 +697,7 @@ class TurnController:  # noqa: PLR0904
                 "completed_at": now_ms(),
                 "error": error,
                 "stop_reason": stop_reason,
+                "hardware_cleanup": hardware_cleanup,
             }
         )
         self._completed_turns.append(completed)

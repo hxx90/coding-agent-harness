@@ -442,6 +442,8 @@ class ModelConfig(BaseModel):
     )
     thinking: ThinkingLevel = "off"
     supports_images: bool = False
+    # Per-request output allowance; None leaves the backend default unchanged.
+    max_output_tokens: int | None = Field(default=None, ge=1)
     auto_compact_threshold: int = DEFAULT_AUTO_COMPACT_THRESHOLD
     _default_alias_to_name = model_validator(mode="before")(_default_alias_to_name)
 

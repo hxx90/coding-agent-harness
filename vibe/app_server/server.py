@@ -25,6 +25,7 @@ from vibe.app_server._session_backend_port import (
     SessionBackendEventDrain,
     SessionBackendExtension,
     SessionBackendHardwareControl,
+    SessionBackendHardwareSetup,
     SessionBackendHistoryClearHost,
     SessionBackendHost,
     SessionBackendHostBackgroundTasks,
@@ -61,6 +62,8 @@ from vibe.app_server.protocol import (
     EventBatch,
     EventNotificationParams,
     EventsReadParams,
+    HardwareSetupCancelParams,
+    HardwareSetupParams,
     HardwareStopParams,
     InitializeParams,
     InitializeResponse,
@@ -156,6 +159,8 @@ _SESSION_BACKEND_METHODS = frozenset({
     "config/reload",
     "config/write",
     "hardware/stop",
+    "hardware/setup",
+    "hardware/setup/cancel",
     "session/agent/update",
     "session/compact",
     "session/context/inject",
@@ -824,7 +829,10 @@ class AppServer:
         host_result = await self._dispatch_backend_host_operation(method, raw_params)
         if host_result is not None:
             return host_result
-        root.guard_request()
+        # Setup owns a lifecycle reservation; its targeted cancellation must
+        # remain reachable while that reservation is held.
+        if method != "hardware/setup/cancel":
+            root.guard_request()
         backend_result = await self._dispatch_backend_operation(
             root, method, raw_params
         )
@@ -1049,6 +1057,23 @@ class AppServer:
     async def _dispatch_backend_hardware(
         root: SessionBackend, method: str, raw_params: dict[str, Any]
     ) -> DispatchResult | None:
+        if method in {"hardware/setup", "hardware/setup/cancel"}:
+            if not isinstance(root, SessionBackendHardwareSetup):
+                raise RequestFailure(
+                    ProtocolErrorCode.NOT_IMPLEMENTED,
+                    "Robot setup is unavailable in this backend; use --legacy-harness",
+                )
+            if method == "hardware/setup/cancel":
+                cancelled = await root.cancel_hardware_setup(
+                    validate_wire(HardwareSetupCancelParams, raw_params)
+                )
+                return DispatchResult(cancelled.response)
+            setup_result = await root.setup_hardware(
+                validate_wire(HardwareSetupParams, raw_params)
+            )
+            return DispatchResult(
+                setup_result.response, after_response=setup_result.after_response
+            )
         if method != "hardware/stop":
             return None
         if not isinstance(root, SessionBackendHardwareControl):

@@ -121,6 +121,46 @@ async def test_provider_default_output_reaches_backend_without_cap(
     assert agent.generation.output_charged >= 30000
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize(
+    ("runtime_cap", "limit_tokens", "expected"),
+    [(None, False, 128000), (1024, False, 1024), (None, True, 4096)],
+)
+async def test_model_output_allowance_reaches_wire(
+    build_config: ConfigBuilder,
+    streaming: bool,
+    runtime_cap: int | None,
+    limit_tokens: bool,
+    expected: int,
+):
+    import json
+
+    from vibe.core.llm.backend.generic import OpenAIAdapter
+
+    backend = FakeBackend(mock_llm_chunk(content="done"))
+    agent, _ = make_agent(
+        build_config, backend, streaming=streaming, limit_tokens=limit_tokens
+    )
+    model = agent.config.get_active_model()
+    model.max_output_tokens = 128000
+    if runtime_cap is not None:
+        agent.set_max_tokens(runtime_cap)
+    [_ async for _ in agent.act("Say done")]
+    assert backend.requests_max_tokens == [expected]
+    request = OpenAIAdapter().prepare_request(
+        model_name=model.name,
+        messages=backend.requests_messages[0],
+        temperature=model.temperature,
+        tools=None,
+        max_tokens=backend.requests_max_tokens[0],
+        tool_choice=None,
+        enable_streaming=streaming,
+        provider=agent.config.get_active_provider(),
+    )
+    assert json.loads(request.body)["max_tokens"] == expected
+
+
 def test_no_token_limits_preserves_audit_and_request_deadline(tmp_path):
     import json
 

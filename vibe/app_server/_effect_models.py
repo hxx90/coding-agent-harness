@@ -363,6 +363,7 @@ class HardwarePolicyStepOutput(ProtocolModel):
 
 
 class HardwarePolicyOutput(ProtocolModel):
+    geometry_library: str = "off"
     policy_id: str
     source: str
     source_sha256: str
