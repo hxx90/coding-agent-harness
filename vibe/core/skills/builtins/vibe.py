@@ -399,9 +399,19 @@ red-on-green stacking scene, H1 off. RGB-D `state.perception` describes red;
 `state.support_perception` describes green in the same metric world frame.
 Use the advertised `stack_objects` verifier: released stack stable for 20 cycles.
 See `docs/robo-stack-pilot.md`.
+Set `ROBO_SIM_TASK=PickPlace` with RGB-D and H1 off for native PickPlaceCan
+(single red soda can). `state.perception` is camera-derived can surface geometry;
+`state.task_goal` is a public fixed workcell specification, not live object truth.
+Use `place_object`: released in its assigned bin, retreated and stable for 20 cycles.
+See `docs/robo-pickplace-pilot.md`.
 
 The real agent loop rejects truncated generations before tool dispatch.
-For bounded Lift sessions, `[generation] enabled=true` adds shared request/token/time/action limits;
+For normal robot use, `[generation] enabled=true, enforce_limits=false` keeps audit/cleanup
+without task request/time/action/token quotas. Policy statement/iteration/action/time caps
+are absent by default; pure computation remains cancellable. Tool errors return to the
+actor for correction, while the failed policy stops safely. Full trace_uri JSONL retains
+all policy steps; responses keep recent records and cumulative counts.
+Explicit evaluation uses `enforce_limits=true` to apply configured task quotas;
 `limit_tokens=false` removes harness input/output token quotas and implicit output caps,
 while preserving request/time/action limits, audit and safety cleanup. With no explicit
 caller cap, the OpenAI-compatible provider receives no `max_tokens` field; service defaults apply.
@@ -412,6 +422,12 @@ which limits total session usage. Backend/model limits still apply.
 `recover_once=true` permits at most one fresh regeneration before dispatch, after observing
 current device state. Both switches default false; the completeness guard is always active.
 Policy execution failures and cancellation never trigger automatic action replay.
+Before any streamed output, continuous sessions retry transient request failures until
+success or cancellation, with exponential backoff. Bounded evaluation sessions retry them
+at most twice (2s/4s backoff, honoring Retry-After within the remaining budget).
+Each attempt shares request/token/time accounting. The GLM gateway's HTTP 403
+get_channel_failed is retryable only with explicit transient upstream evidence;
+ordinary auth/quota/IP denials remain terminal. This is separate from recover_once.
 See `docs/robo-cli-generation-recovery.md` for accounting and separate safety cleanup.
 
 Policy actions return the full CommandReceipt dictionary: for `move_to(...)` or

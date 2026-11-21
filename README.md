@@ -227,6 +227,7 @@ Most modern terminals should work, but older or minimal terminal emulators may h
    ```toml
    [generation]
    enabled = true
+   enforce_limits = false
    limit_tokens = false
    recover_once = false
 
@@ -234,10 +235,15 @@ Most modern terminals should work, but older or minimal terminal emulators may h
    generate_titles = false
    ```
 
-   这会保留完整性检查与安全收尾，并关闭客户端 token 配额及自动重新生成。
-   请求/时间/动作额度仍生效（默认 16 请求、480 秒、80 动作），策略还有自身的
-   AST 与执行限制。服务端仍有模型上下文和输出限制。完整说明见
-   [生成完整性与会话控制](docs/robo-cli-generation-recovery.md)。
+   正常模式保留审计、完整性检查与安全收尾，不限制整任务请求数、耗时、
+   token 或动作数。策略也默认不限制执行语句、循环、动作或运行时长。
+   模型可根据工具错误继续修正；用户可随时取消。单次动作的未到位/失败仍如实返回。
+   只有显式评测时才设置 `enforce_limits=true`，启用下面配置中的预算。
+   模型服务自己的上下文与响应限制仍由服务决定；已配置的模型输出参数不变。
+   [连续任务与评测预算](docs/robo-cli-generation-recovery.md) 说明了两种模式。
+
+   正常模式对尚未产生输出的瞬时请求错误持续退避重试，取消时立即中断；
+   鉴权失败等需要人工处理的错误不会盲目重试。截断防护和停止 ACK 保留。
 
 4. **启动真实 CLI。**
 
@@ -264,7 +270,7 @@ MCP 子进程。
 
 | 设置 | 用途 |
 | --- | --- |
-| `ROBO_SIM_TASK = "Lift"` / `"Stack"` | 选择任务；省略时为 Lift |
+| `ROBO_SIM_TASK = "Lift"` / `"Stack"` / `"PickPlace"` | 选择任务；省略时为 Lift |
 | `ROBO_SIM_OBSERVATION_MODE = "rgbd"` | 相机观测；省略时原适配器默认 `privileged`，含物体真值，不能当作视觉评测 |
 | `ROBO_SIM_GEOMETRY_LIBRARY = "off"` / `"h1-v8-v9"` | 关闭或启用 H1；H1 仅用于 RGB-D Lift，Stack 保持 off |
 | `ROBO_SIM_SEED = "1201"` | 固定初始场景；省略时随机，不保证模型输出可复现 |
@@ -278,6 +284,11 @@ Stack 使用 [Stack 配置示例](examples/robo/stack-rgbd-off.toml)，任务可
 
 Stack 验证还要求连续 20 个控制周期稳定；`verify()` 本身不推进物理时间。
 见 [Stack 验证契约](docs/robo-stack-pilot.md)。
+
+PickPlace 选择原生单罐任务 PickPlaceCan：根据 RGB-D 将红色饮料罐放入指定格子，
+使用 `place_object` 独立验证松爪、撤离和连续 20 周期稳定。必须使用 RGB-D、H1 关闭。
+目标格位置来自公开固定工位规格，物体位置来自相机。
+见 [配置示例](examples/robo/pickplace-rgbd-off.toml) 与 [观测/评分契约](docs/robo-pickplace-pilot.md)。
 
 固定目标移动使用 `move_to`；原 `move_cartesian` 仍是重复归一化增量。
 回执中的到位状态在 `receipt["result"]["motion"]`，包含误差、周期数与退出原因。

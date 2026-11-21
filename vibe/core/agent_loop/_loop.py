@@ -27,6 +27,11 @@ from vibe.core.agent_loop._generation import (
     validate_generation,
 )
 from vibe.core.agent_loop._request_broker import InteractionRequestBroker
+from vibe.core.agent_loop._request_retry import (
+    RetryableRequestError,
+    request_retry_reason,
+    wait_for_request_retry,
+)
 from vibe.core.agent_loop._title_cadence import TitleCadence, TitleGenTicket
 from vibe.core.agent_loop_hooks import AgentLoopHooksMixin, PostToolFinalization
 from vibe.core.agents.manager import AgentManager
@@ -1670,7 +1675,7 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
                 async with (
                     asyncio.timeout(
                         self.config.generation.max_seconds
-                        if self.config.generation.enabled
+                        if self.config.generation.limits_enabled
                         else None
                     ),
                     agent_span(model=model_name, session_id=self.session_id),
@@ -1960,7 +1965,7 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
                 pass
 
     async def _run_compaction(self) -> AsyncGenerator[BaseEvent]:
-        if self.config.generation.enabled:
+        if self.config.generation.limits_enabled:
             raise RuntimeError(
                 "Bounded task cannot compact or start auxiliary model calls"
             )
@@ -2559,6 +2564,7 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
     async def _perform_llm_turn(self) -> AsyncGenerator[BaseEvent, None]:
         # This try block ends before any tool dispatch. Never move execution
         # into it: runtime failures must not regenerate/replay an action batch.
+        request_retries = 0
         while True:
             history_length = len(self.messages)
             try:
@@ -2570,6 +2576,11 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
                     if assistant_event.content:
                         yield assistant_event
                 break
+            except RetryableRequestError as exc:
+                request_retries += 1
+                await wait_for_request_retry(
+                    exc, self.generation, request_retries, self.notice_retry
+                )
             except (IncompleteGenerationError, IncompleteStreamError) as exc:
                 self.generation.audit("generation_rejected", reason=str(exc))
                 if not (
@@ -2606,7 +2617,7 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
         async for event in self._handle_tool_calls(resolved):
             yield event
             if (
-                self.config.generation.enabled
+                self.config.generation.limits_enabled
                 and isinstance(event, ToolResultEvent)
                 and event.tool_name == "robo_run_policy"
                 and event.error
@@ -3296,6 +3307,10 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
             )
             if isinstance(e, RefusalError):
                 raise
+            if result is None and isinstance(e, BackendError):
+                reason = request_retry_reason(e, bounded=self.config.generation.enabled)
+                if reason is not None:
+                    raise RetryableRequestError(e, reason) from e
             if _should_raise_rate_limit_error(e):
                 raise RateLimitError(provider.name, model.name) from e
             if _is_context_too_long_error(e):
@@ -3468,6 +3483,10 @@ class AgentLoop(AgentLoopHooksMixin):  # noqa: PLR0904
             )
             if isinstance(e, RefusalError):
                 raise
+            if chunk_agg is None and isinstance(e, BackendError):
+                reason = request_retry_reason(e, bounded=self.config.generation.enabled)
+                if reason is not None:
+                    raise RetryableRequestError(e, reason) from e
             if isinstance(e, BackendError | IncompleteStreamError):
                 self._record_interrupted_assistant(chunk_agg)
             if isinstance(e, IncompleteStreamError | IncompleteGenerationError):

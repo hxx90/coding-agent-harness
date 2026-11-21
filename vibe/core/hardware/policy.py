@@ -28,7 +28,8 @@ _MAX_SOURCE_BYTES = 32 * 1024
 _MAX_VALUE_BYTES = 16 * 1024
 _MAX_STDOUT_LINE = 4096
 _MAX_STDOUT_LINES = 100
-_MAX_ACTIONS = 50
+_RECEIPT_WINDOW = 50
+_COOPERATIVE_INTERVAL = 64
 _MAX_TRACE_STEPS = 200
 _MAX_AST_NODES = 1000
 _MAX_ROUND_ARGUMENTS = 2
@@ -120,26 +121,25 @@ class HardwarePolicyError(RuntimeError):
 
 
 class HardwarePolicyRunner:
-    """Interpret a bounded Python policy against one leased hardware device."""
+    """Interpret a cancellable Python policy, with optional explicit evaluation caps."""
 
     def __init__(
         self,
         runtime: HardwareRuntime,
         *,
         artifact_dir: Path,
-        max_statements: int = 200,
-        max_actions: int = 50,
-        max_loop_iterations: int = 50,
-        timeout_seconds: float = 120.0,
+        max_statements: int | None = None,
+        max_actions: int | None = None,
+        max_loop_iterations: int | None = None,
+        timeout_seconds: float | None = None,
     ) -> None:
-        if min(max_statements, max_actions, max_loop_iterations) < 1:
-            raise ValueError("Hardware policy limits must be positive")
-        if max_actions > _MAX_ACTIONS:
-            raise ValueError(
-                f"Hardware policies support at most {_MAX_ACTIONS} actions"
-            )
-        if timeout_seconds <= 0:
-            raise ValueError("Hardware policy timeout must be positive")
+        if any(
+            limit is not None and limit < 1
+            for limit in (max_statements, max_actions, max_loop_iterations)
+        ):
+            raise ValueError("Hardware policy limits must be positive when configured")
+        if timeout_seconds is not None and timeout_seconds <= 0:
+            raise ValueError("Hardware policy timeout must be positive when configured")
         self._runtime = runtime
         self._artifact_dir = artifact_dir
         self._max_statements = max_statements
@@ -203,6 +203,7 @@ class HardwarePolicyRunner:
             action_names=action_names,
             verification_names=verification_names,
             capability_calls=capability_calls,
+            trace_path=self._artifact_dir / f"{policy_id}.steps.jsonl",
             max_statements=self._max_statements,
             max_actions=self._max_actions,
             max_loop_iterations=self._max_loop_iterations,
@@ -262,6 +263,11 @@ class HardwarePolicyRunner:
             source_sha256=hashlib.sha256(encoded).hexdigest(),
             source_uri=source_uri,
             steps=interpreter.steps,
+            trace_uri=interpreter.trace_path.resolve().as_uri(),
+            statement_count=interpreter._statement_count,
+            action_count=interpreter._action_count,
+            loop_iterations=interpreter._loop_iterations,
+            history_truncated=interpreter.history_truncated,
             stdout=interpreter.stdout,
             receipts=interpreter.receipts,
             snapshot=snapshot,
@@ -295,6 +301,10 @@ class HardwarePolicyRunner:
                     {
                         "policy_id": policy_id,
                         "error": error,
+                        "trace_uri": interpreter.trace_path.resolve().as_uri(),
+                        "statement_count": interpreter._statement_count,
+                        "action_count": interpreter._action_count,
+                        "loop_iterations": interpreter._loop_iterations,
                         "geometry_library": library,
                         "steps": [
                             step.model_dump(mode="json") for step in interpreter.steps
@@ -344,10 +354,14 @@ class _PolicyInterpreter:
         action_names: set[str],
         verification_names: set[str],
         capability_calls: set[str],
-        max_statements: int,
-        max_actions: int,
-        max_loop_iterations: int,
+        trace_path: Path,
+        max_statements: int | None,
+        max_actions: int | None,
+        max_loop_iterations: int | None,
     ) -> None:
+        self.trace_path = trace_path
+        self.history_truncated = False
+        self._step_sequence = 0
         self._capability_calls = capability_calls
         self._runtime = runtime
         self._policy_id = policy_id
@@ -370,6 +384,7 @@ class _PolicyInterpreter:
         self.last_report: VerificationReport | None = None
 
     async def execute(self, module: ast.Module) -> None:
+        self.trace_path.touch()
         await self._execute_block(module.body)
 
     async def _execute_block(self, statements: list[ast.stmt]) -> None:
@@ -380,7 +395,12 @@ class _PolicyInterpreter:
         self, statement: ast.stmt
     ) -> None:
         self._statement_count += 1
-        if self._statement_count > self._max_statements:
+        if self._statement_count % _COOPERATIVE_INTERVAL == 0:
+            await asyncio.sleep(0)
+        if (
+            self._max_statements is not None
+            and self._statement_count > self._max_statements
+        ):
             raise self._error(
                 statement,
                 f"Policy exceeded {self._max_statements} executed statements",
@@ -601,12 +621,6 @@ class _PolicyInterpreter:
             self._record(PolicyStepKind.STOP, "stop", call, output)
             return output
         if name == "print":
-            if len(self.stdout) >= _MAX_STDOUT_LINES:
-                raise self._error(
-                    call,
-                    f"Policy output exceeds {_MAX_STDOUT_LINES} lines",
-                    code="output_limit",
-                )
             line = " ".join(
                 item if isinstance(item, str) else json.dumps(item, ensure_ascii=False)
                 for item in args
@@ -616,6 +630,9 @@ class _PolicyInterpreter:
                     call, "Policy output line is too large", code="output_limit"
                 )
             self.stdout.append(line)
+            if len(self.stdout) > _MAX_STDOUT_LINES:
+                self.stdout.pop(0)
+                self.history_truncated = True
             self._record(PolicyStepKind.OUTPUT, "print", call, line)
             return None
         return self._pure_call(name, args, call)
@@ -628,7 +645,7 @@ class _PolicyInterpreter:
                 node, f"Unsupported device action: {action}", code="unknown_action"
             )
         self._action_count += 1
-        if self._action_count > self._max_actions:
+        if self._max_actions is not None and self._action_count > self._max_actions:
             raise self._error(
                 node,
                 f"Policy exceeded {self._max_actions} hardware actions",
@@ -644,6 +661,9 @@ class _PolicyInterpreter:
         receipt = await self._runtime.execute(command, run_id=self._run_id)
         self.last_report = None
         self.receipts.append(receipt)
+        if len(self.receipts) > _RECEIPT_WINDOW:
+            self.receipts.pop(0)
+            self.history_truncated = True
         output = cast(JsonValue, receipt.model_dump(mode="json"))
         self._record(PolicyStepKind.ACTION, action, node, output)
         if receipt.status is not CommandStatus.COMPLETED:
@@ -669,7 +689,10 @@ class _PolicyInterpreter:
             )
         ):
             value = range(*args)
-            if len(value) > self._max_loop_iterations:
+            if (
+                self._max_loop_iterations is not None
+                and len(value) > self._max_loop_iterations
+            ):
                 raise self._error(
                     node,
                     f"range exceeds {self._max_loop_iterations} iterations",
@@ -738,7 +761,10 @@ class _PolicyInterpreter:
 
     def _consume_loop_iteration(self, node: ast.AST) -> None:
         self._loop_iterations += 1
-        if self._loop_iterations > self._max_loop_iterations:
+        if (
+            self._max_loop_iterations is not None
+            and self._loop_iterations > self._max_loop_iterations
+        ):
             raise self._error(
                 node,
                 f"Policy exceeded {self._max_loop_iterations} loop iterations",
@@ -748,22 +774,21 @@ class _PolicyInterpreter:
     def _record(
         self, kind: PolicyStepKind, name: str, node: ast.Call, output: JsonValue
     ) -> None:
-        if len(self.steps) >= _MAX_TRACE_STEPS:
-            raise self._error(
-                node,
-                f"Policy trace exceeds {_MAX_TRACE_STEPS} steps",
-                code="trace_limit",
-            )
         _bounded_json(output, node)
-        self.steps.append(
-            HardwarePolicyStep(
-                sequence=len(self.steps) + 1,
-                kind=kind,
-                name=name,
-                line=node.lineno,
-                output=output,
-            )
+        self._step_sequence += 1
+        step = HardwarePolicyStep(
+            sequence=self._step_sequence,
+            kind=kind,
+            name=name,
+            line=node.lineno,
+            output=output,
         )
+        with self.trace_path.open("a", encoding="utf-8") as trace:
+            trace.write(step.model_dump_json() + "\n")
+        self.steps.append(step)
+        if len(self.steps) > _MAX_TRACE_STEPS:
+            self.steps.pop(0)
+            self.history_truncated = True
 
     @staticmethod
     def _error(node: ast.AST, message: str, *, code: str) -> HardwarePolicyError:

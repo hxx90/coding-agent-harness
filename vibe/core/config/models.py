@@ -632,6 +632,7 @@ class GenerationConfig(BaseModel):
     """Opt-in bounded robot session; regeneration remains off by default."""
 
     enabled: bool = False
+    enforce_limits: bool = True
     recover_once: bool = False
     limit_tokens: bool = True
     max_calls: int = Field(default=16, ge=1, le=100)
@@ -641,3 +642,7 @@ class GenerationConfig(BaseModel):
     max_seconds: float = Field(default=480, gt=0)
     max_actions: int = Field(default=80, ge=1)
     audit_dir: str = ""
+
+    @property
+    def limits_enabled(self) -> bool:
+        return self.enabled and self.enforce_limits

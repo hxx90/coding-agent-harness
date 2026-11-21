@@ -46,7 +46,7 @@ class GenerationControl:
             )
 
     def start(self) -> None:
-        if self.config.enabled and self.deadline is None:
+        if self.config.limits_enabled and self.deadline is None:
             self.deadline = time.monotonic() + self.config.max_seconds
 
     def reserve(
@@ -58,9 +58,10 @@ class GenerationControl:
         if not self.config.enabled:
             return requested, 0
         self.start()
-        if not self.config.limit_tokens:
-            if self.calls >= self.config.max_calls or (
-                self.deadline is not None and time.monotonic() >= self.deadline
+        if not self.config.limits_enabled or not self.config.limit_tokens:
+            if self.config.limits_enabled and (
+                self.calls >= self.config.max_calls
+                or (self.deadline is not None and time.monotonic() >= self.deadline)
             ):
                 self.audit("budget_exhausted", calls=self.calls)
                 raise GenerationBudgetError(
@@ -151,7 +152,7 @@ class GenerationControl:
     ) -> None:
         if not self.config.enabled:
             return
-        if not self.config.limit_tokens:
+        if not self.config.limits_enabled or not self.config.limit_tokens:
             # These totals include only provider-reported usage, not reservations.
             if chunk is not None and chunk.usage is not None:
                 self.input_charged += chunk.usage.prompt_tokens

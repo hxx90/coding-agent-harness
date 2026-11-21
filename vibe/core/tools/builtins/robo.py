@@ -298,10 +298,10 @@ class RoboRunPolicyResult(BaseModel):
 
 class RoboRunPolicyConfig(BaseToolConfig):
     permission: ToolPermission = ToolPermission.ASK
-    max_statements: int = Field(default=200, ge=1, le=1000)
-    max_actions: int = Field(default=50, ge=1, le=50)
-    max_loop_iterations: int = Field(default=50, ge=1, le=1000)
-    timeout_seconds: float = Field(default=120.0, gt=0, le=600)
+    max_statements: int | None = Field(default=None, ge=1)
+    max_actions: int | None = Field(default=None, ge=1)
+    max_loop_iterations: int | None = Field(default=None, ge=1)
+    timeout_seconds: float | None = Field(default=None, gt=0)
 
 
 class RoboRunPolicy(

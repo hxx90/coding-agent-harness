@@ -277,6 +277,11 @@ class HardwarePolicyResult(BaseModel):
     source: str = Field(max_length=32 * 1024)
     source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     source_uri: str = Field(min_length=1, max_length=4096)
+    trace_uri: str | None = None
+    statement_count: int = Field(default=0, ge=0)
+    action_count: int = Field(default=0, ge=0)
+    loop_iterations: int = Field(default=0, ge=0)
+    history_truncated: bool = False
     status: PolicyRunStatus = PolicyRunStatus.COMPLETED
     steps: list[HardwarePolicyStep] = Field(default_factory=list, max_length=200)
     stdout: list[str] = Field(default_factory=list, max_length=100)

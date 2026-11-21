@@ -20,10 +20,12 @@ def test_model_receives_policy_budget_and_snapshot_contract() -> None:
     spec = agent.format_handler.get_available_tools(agent.tool_manager)[0]
     description = spec.function.description
     defaults = RoboRunPolicyConfig()
-    assert f"{defaults.max_statements} 条" in description
-    assert f"{defaults.max_actions} 次动作" in description
-    assert f"{defaults.max_loop_iterations} 次循环" in description
-    assert f"{defaults.timeout_seconds:g} 秒" in description
+    assert defaults.max_statements is None
+    assert defaults.max_actions is None
+    assert defaults.max_loop_iterations is None
+    assert defaults.timeout_seconds is None
+    assert "默认不限制" in description
+    assert "200 条执行语句" not in description
     assert '["state"]["perception"]' in description
     assert 'receipt["result"]["motion"]["reached"]' in description
     assert 'receipt["motion"]' in description

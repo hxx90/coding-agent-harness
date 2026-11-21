@@ -39,7 +39,7 @@ def create_hardware_runtime(
         adapters=adapters,
         trace_dir=trace_root,
         task_action_limit=config.generation.max_actions
-        if config.generation.enabled
+        if config.generation.limits_enabled
         else None,
     )
 
