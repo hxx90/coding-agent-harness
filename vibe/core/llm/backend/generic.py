@@ -161,6 +161,62 @@ class OpenAIAdapter(APIAdapter):
             endpoint=self.endpoint,
         )
 
+    async def parse_stream(
+        self, responses: AsyncGenerator[dict[str, Any]], provider: ProviderConfig
+    ) -> AsyncGenerator[ParsedStreamChunk]:
+        # Some compatible gateways restart the wire index for each sequential
+        # tool, while retaining distinct IDs. Normalize before UI and aggregation.
+        active: dict[int, int] = {}
+        ids: dict[int, str | None] = {}
+        arguments: dict[int, str] = {}
+        seen_ids: set[str] = set()
+        async with aclosing(responses):
+            async for data in responses:
+                chunk = self.parse_response(data, provider)
+                for call in chunk.message.tool_calls or []:
+                    wire_index = call.index
+                    if wire_index is None:
+                        raise ValueError("Tool call chunk missing index")
+                    slot = active.get(wire_index)
+                    # Older Mistral streams use the string "null" on argument
+                    # continuations. It is a missing ID, not a new call.
+                    if (
+                        slot is not None
+                        and call.id == "null"
+                        and not call.function.name
+                    ):
+                        call.id = None
+                    if (
+                        slot is not None
+                        and call.id
+                        and ids[slot]
+                        and call.id != ids[slot]
+                    ):
+                        try:
+                            complete = isinstance(json.loads(arguments[slot]), dict)
+                        except ValueError:
+                            complete = False
+                        if not complete:
+                            raise ValueError(
+                                "Wire tool index reused while its call is incomplete"
+                            )
+                        slot = None
+                    if slot is None:
+                        slot = wire_index if wire_index not in ids else max(ids) + 1
+                        active[wire_index] = slot
+                        ids[slot] = None
+                        arguments[slot] = ""
+                    if call.id and not ids[slot]:
+                        if call.id in seen_ids:
+                            raise ValueError(
+                                "Duplicate tool call ID across stream slots"
+                            )
+                        ids[slot] = call.id
+                        seen_ids.add(call.id)
+                    arguments[slot] += call.function.arguments or ""
+                    call.index = slot
+                yield ParsedStreamChunk(data, chunk)
+
     def _parse_message(
         self, data: dict[str, Any], field_name: str
     ) -> LLMMessage | None:
