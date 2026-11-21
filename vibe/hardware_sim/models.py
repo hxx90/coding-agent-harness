@@ -42,7 +42,7 @@ class SimulatorSettings(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     headless: bool = False
-    task: Literal["Lift", "Stack"] = "Lift"
+    task: Literal["Lift", "Stack", "PickPlace"] = "Lift"
     observation_mode: Literal["privileged", "rgbd"] = "privileged"
     geometry_library: Literal["off", "h1-v8-v9"] = "off"
     seed: int | None = None

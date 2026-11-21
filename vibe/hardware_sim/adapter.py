@@ -31,6 +31,11 @@ from vibe.core.hardware import (
     VerificationReport,
     VerificationStatus,
 )
+from vibe.hardware_sim._pickplace import (
+    PlacementStability,
+    pickplace_goal,
+    verify_pickplace,
+)
 from vibe.hardware_sim._target_motion import run_target_motion
 from vibe.hardware_sim._viewer import ViewerProcess
 from vibe.hardware_sim.models import TargetMoveParameters, TargetMoveReport
@@ -66,13 +71,17 @@ class RobosuiteSimulatorAdapter:
         evidence_dir: Path | None = None,
         recording_dir: Path | None = None,
         max_control_cycles: int | None = None,
-        task: Literal["Lift", "Stack"] = "Lift",
+        task: Literal["Lift", "Stack", "PickPlace"] = "Lift",
     ) -> None:
-        if task not in {"Lift", "Stack"}:
-            raise ValueError("Only Lift and Stack are supported")
-        if task == "Stack" and geometry_library != "off":
-            raise ValueError("Stack pilot requires H1 off")
+        if task not in {"Lift", "Stack", "PickPlace"}:
+            raise ValueError("Only Lift, Stack and PickPlace are supported")
+        if task != "Lift" and geometry_library != "off":
+            raise ValueError(f"{task} pilot requires H1 off")
+        if task == "PickPlace" and observation_mode != "rgbd":
+            raise ValueError("PickPlace requires RGB-D observation mode")
         self._task = task
+        self._camera = "agentview" if task == "PickPlace" else _CAPTURE_CAMERA
+        self._pickplace_stability = PlacementStability()
         self._stack_stable_cycles = 0
         self._support_perception: dict[str, Any] = {}
         if geometry_library != "off" and observation_mode != "rgbd":
@@ -122,7 +131,7 @@ class RobosuiteSimulatorAdapter:
                 transport=DeviceTransport.SIMULATOR,
                 actions=[
                     ActionCapability(
-                        name="home", description="Reset the Panda and cube scene"
+                        name="home", description="Reset the Panda and task scene"
                     ),
                     ActionCapability(
                         name="move_cartesian",
@@ -170,11 +179,12 @@ class RobosuiteSimulatorAdapter:
                 ],
                 verifications=[
                     VerificationCapability(
-                        name="stack_objects"
-                        if self._task == "Stack"
-                        else "lift_object",
+                        name=self._verification_criterion,
                         description=(
-                            "Verify red cube stacked on green cube, released, with "
+                            "Verify the can is released in its assigned bin, robot "
+                            "retreated and object settled for 20 control cycles."
+                            if self._task == "PickPlace"
+                            else "Verify red cube stacked on green cube, released, with "
                             "official Stack success and low object velocities for "
                             "20 consecutive control cycles (1 simulation second)."
                             if self._task == "Stack"
@@ -192,9 +202,7 @@ class RobosuiteSimulatorAdapter:
                 ],
                 metadata={
                     "environment": self._task,
-                    "default_verification": "stack_objects"
-                    if self._task == "Stack"
-                    else "lift_object",
+                    "default_verification": self._verification_criterion,
                     "control_mode": "osc_pose",
                     "dof": 7,
                     "has_viewer": self._show_viewer,
@@ -209,11 +217,21 @@ class RobosuiteSimulatorAdapter:
                     + (
                         " Stack adds state.support_perception: green-rgbd-v1 points and centroid of the green support cube, same camera/time/frame/units. Both clouds use RGB colors and aligned depth only. Task: release the red cube on top of the green cube, retreat and allow settling; verify stack_objects."
                         if self._task == "Stack"
+                        else " PickPlace uses native PickPlaceCan. state.perception is the red can (not a cube). state.task_goal gives the public fixed destination bin and wall height from the workcell specification, NOT sensed object state. Camera is agentview. Move the can to its assigned bin, release, retreat, settle and verify place_object. Red-cloud centroid is visible surface geometry, not object center or a guaranteed grasp pose."
+                        if self._task == "PickPlace"
                         else ""
                     ),
                 },
             )
         ]
+
+    @property
+    def _verification_criterion(self) -> str:
+        return {
+            "Lift": "lift_object",
+            "Stack": "stack_objects",
+            "PickPlace": "place_object",
+        }[self._task]
 
     async def connect(self, device_id: str) -> DeviceSnapshot:
         self._validate_device(device_id)
@@ -246,6 +264,12 @@ class RobosuiteSimulatorAdapter:
         self, device_id: str, criterion: str, parameters: dict[str, JsonValue]
     ) -> VerificationReport:
         self._validate_connected(device_id)
+        if criterion == "place_object" and self._task == "PickPlace":
+            return verify_pickplace(
+                self._require_environment(),
+                self._snapshot(capture_evidence=True),
+                self._pickplace_stability,
+            )
         if criterion == "stack_objects" and self._task == "Stack":
             return self._verify_stack()
         if criterion != "lift_object" or self._task != "Lift":
@@ -437,7 +461,7 @@ class RobosuiteSimulatorAdapter:
             self._recording_dir,
         ))
         environment = robosuite.make(
-            env_name=self._task,
+            env_name="PickPlaceCan" if self._task == "PickPlace" else self._task,
             robots="Panda",
             # The native Viewer renders a state mirror in its own process.
             # Robosuite only needs an offscreen context when evidence or MP4
@@ -445,7 +469,7 @@ class RobosuiteSimulatorAdapter:
             has_renderer=False,
             has_offscreen_renderer=camera_enabled,
             use_camera_obs=camera_enabled,
-            camera_names=_CAPTURE_CAMERA,
+            camera_names=self._camera,
             camera_depths=self._observation_mode == "rgbd",
             seed=self._seed,
             camera_heights=384,
@@ -458,6 +482,7 @@ class RobosuiteSimulatorAdapter:
         self._environment = environment
         self._observation = environment.reset()
         self._stack_stable_cycles = 0
+        self._pickplace_stability.reset()
         self._home_cube_position = self._float_values("cube_pos")
 
     async def _apply_action(
@@ -472,6 +497,7 @@ class RobosuiteSimulatorAdapter:
             case "home":
                 self._observation = self._require_environment().reset()
                 self._stack_stable_cycles = 0
+                self._pickplace_stability.reset()
                 self._perception_sequence = -1
                 self._home_cube_position = self._float_values("cube_pos")
                 self._render()
@@ -516,6 +542,8 @@ class RobosuiteSimulatorAdapter:
             self._stack_stable_cycles = (
                 self._stack_stable_cycles + 1 if self._stack_settled() else 0
             )
+        if self._task == "PickPlace":
+            self._pickplace_stability.observe(self._require_environment())
         if not self._cleanup_step:
             self._control_cycles_used += 1
         self._perception_sequence = -1
@@ -664,7 +692,7 @@ class RobosuiteSimulatorAdapter:
         return [
             ObservationEvidence(
                 evidence_id=evidence_id,
-                source_id=_CAPTURE_CAMERA,
+                source_id=self._camera,
                 modality=ObservationModality.RGB,
                 captured_at=captured_at,
                 sequence=self._sequence,
@@ -720,6 +748,8 @@ class RobosuiteSimulatorAdapter:
             state["perception"] = self._camera_perception()
             if self._task == "Stack":
                 state["support_perception"] = self._support_perception
+        if self._task == "PickPlace":
+            state["task_goal"] = pickplace_goal()
         return state
 
     def _geometry_notes(self) -> str | None:
@@ -744,8 +774,8 @@ class RobosuiteSimulatorAdapter:
         rgb = self._camera_image()
         if rgb is None:
             raise RobosuiteSimulatorError("RGB-D camera returned no RGB frame")
-        raw_depth = self._observation[f"{_CAPTURE_CAMERA}_depth"][::-1]
-        depth, intrinsic, pose = metric_camera(simulation, _CAPTURE_CAMERA, raw_depth)
+        raw_depth = self._observation[f"{self._camera}_depth"][::-1]
+        depth, intrinsic, pose = metric_camera(simulation, self._camera, raw_depth)
         result = red_point_cloud(rgb, depth, intrinsic, pose)
         result.update(
             sequence=self._sequence,
@@ -782,7 +812,7 @@ class RobosuiteSimulatorAdapter:
         return result
 
     def _camera_image(self) -> Any | None:
-        image = self._observation.get(f"{_CAPTURE_CAMERA}_image")
+        image = self._observation.get(f"{self._camera}_image")
         if image is None or getattr(image, "ndim", None) != _IMAGE_DIMENSIONS:
             return None
         if image.shape[2] != _RGB_CHANNELS:
@@ -831,6 +861,8 @@ class RobosuiteSimulatorAdapter:
                 gripper=environment.robots[0].gripper,
                 object_geoms=environment.cubeA
                 if self._task == "Stack"
+                else environment.objects[environment.object_id]
+                if self._task == "PickPlace"
                 else environment.cube,
             )
         )
@@ -863,6 +895,7 @@ class RobosuiteSimulatorAdapter:
         self._perception_sequence = -1
         self._perception = {}
         self._support_perception = {}
+        self._pickplace_stability.reset()
         self._stack_stable_cycles = 0
         self._observation = {}
         self._home_cube_position = []

@@ -1,0 +1,15 @@
+# Merge this MCP section into .vibe/config.toml; preserve existing model/provider settings.
+[[mcp_servers]]
+name = "robo-mujoco"
+transport = "stdio"
+command = "uv"
+args = ["run", "--no-sync", "robo-sim-mcp"]
+sampling_enabled = false
+startup_timeout_sec = 60.0
+tool_timeout_sec = 120.0
+disabled_tools = ["robo_devices", "robo_connect", "robo_arm", "robo_disarm", "robo_observe", "robo_verify", "robo_execute", "robo_stop", "robo_disconnect"]
+[mcp_servers.env]
+ROBO_SIM_OBSERVATION_MODE = "rgbd"
+ROBO_SIM_GEOMETRY_LIBRARY = "off"
+
+ROBO_SIM_TASK = "PickPlace"
