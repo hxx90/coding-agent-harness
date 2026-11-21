@@ -1,0 +1,13 @@
+gx = -0.068
+gy = 0.025
+m = move_to(target_xyz=[gx, gy, 0.95], tolerance_xyz=[0.005, 0.005, 0.01], max_steps=60, settle_steps=3)
+print("over", m["result"]["motion"]["reached"], m["result"]["motion"]["error_xyz"], m["result"]["motion"]["cycles"])
+m = move_to(target_xyz=[gx, gy, 0.893], tolerance_xyz=[0.004, 0.004, 0.006], max_steps=50, settle_steps=3)
+print("place", m["result"]["motion"]["reached"], m["result"]["motion"]["position_xyz"], m["result"]["motion"]["cycles"])
+r = gripper_open()
+m = move_to(target_xyz=[gx, gy, 0.99], tolerance_xyz=[0.01, 0.01, 0.015], max_steps=40, settle_steps=3)
+print("retreat", m["result"]["motion"]["reached"], m["result"]["motion"]["cycles"])
+s = observe()
+print("red", s["state"]["perception"]["centroid"], "green", s["state"]["support_perception"]["centroid"], "rem", s["state"]["control_cycles_remaining"])
+v = verify("stack_objects")
+print("verify", v["status"])

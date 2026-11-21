@@ -1,0 +1,40 @@
+snap = observe()
+per = snap["state"]["perception"]
+if per["ok"] == False:
+    stop()
+pts = per["points"]
+n = len(pts)
+czc = per["centroid"][2]
+sx = 0.0
+sy = 0.0
+sz = 0.0
+c = 0
+for i in range(0, n, 6):
+    pt = pts[i]
+    if pt[2] > czc + 0.008:
+        sx = sx + pt[0]
+        sy = sy + pt[1]
+        sz = sz + pt[2]
+        c = c + 1
+if c < 3:
+    stop()
+gx = sx / c
+gy = sy / c
+gz = sz / c - 0.022
+print("grasp target", gx, gy, gz, "top samples", c)
+gripper_open()
+r1 = move_to(target_xyz=[gx, gy, gz + 0.10])
+print("pregrasp", r1["result"]["motion"]["reached"], r1["result"]["motion"]["error_max_m"])
+r2 = move_to(target_xyz=[gx, gy, gz])
+print("descend", r2["result"]["motion"]["reached"], r2["result"]["motion"]["error_max_m"])
+gripper_close()
+mid = observe()
+print("after close ee", mid["state"]["end_effector_position"], "grip", mid["state"]["gripper_positions"])
+r3 = move_to(target_xyz=[gx, gy, gz + 0.15], max_steps=100)
+print("lift", r3["result"]["motion"]["reached"], r3["result"]["motion"]["error_max_m"])
+fin = observe()
+print("final ee", fin["state"]["end_effector_position"])
+print("final centroid", fin["state"]["perception"]["centroid"], "ok", fin["state"]["perception"]["ok"])
+print("cycles remaining", fin["state"]["control_cycles_remaining"])
+rep = verify("lift_object")
+print("verify status", rep["status"])

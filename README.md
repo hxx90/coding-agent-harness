@@ -23,15 +23,231 @@ MuJoCo / Robosuite Panda 仿真**；这不代表已完成真实机械臂验收�
 | --- | --- |
 | Lift：抓起红方块 | 自然语言 → 自主策略 → 独立验证 → 停止 ACK → 释放租约已跑通 |
 | Stack：将红方块放到绿方块上 | 可选场景，已有一次自主全链路成功；默认仍为 Lift |
+| PickPlaceCan：将饮料罐放入指定格子 | 自主抓取、跨箱搬运、松爪、撤离与独立验证已跑通；目标来自公开固定工位规格 |
 | 视觉输入 | RGB-D、公开相机标定、颜色分割点云；需显式启用 `rgbd` |
-| RSI H1 几何 helper | 固定哈希原件，可选、默认关闭；迁移后的增益尚未证明，Stack 要求关闭 |
+| RSI H1 几何 helper | 固定哈希原件，可选、默认关闭；迁移后的增益尚未证明，Stack / PickPlace 要求关闭 |
 | 截断与动作控制 | 派发前完整性检查；固定目标逐周期反馈 `move_to`；自动重新生成默认关闭 |
 
 截至 2026-11-19，已提交基线 `5dcb86e` 对应的本地记录为 Lift 固定场景
 907 / 911 / 919 共 3/3 自主全链路成功，Stack 场景 1201 为 1/1。
 两组均关闭 H1 和自动生成恢复，未设置客户端 token 配额。Lift 907 在同一会话内
 生成了第二段策略才成功。**这些是小样本工程验收，不是总体成功率或官方
-RoboWorld / CaP-X 成绩。** 原始录像和实验报告保存在实验工作区，未随仓库分发。
+RoboWorld / CaP-X 成绩。** 下面另收录 Stack 1202 与 PickPlaceCan 1302 的
+2026-11-21 验收。不同日期的模型与运行协议不同，不作横向成功率比较。
+精选原始录像、模型策略和可复查摘要随仓库保存，完整会话日志仍保留在实验工作区。
+
+### Agent 任务演示与生成的 Policy
+
+**自然语言任务 → 观察 → 模型写 Python policy → 执行动作 → 独立验证 → 停止 ACK 与释放租约。**
+以下录像来自真实 Robo CLI 自主运行，未向模型提供获胜策略。全部使用 Panda 仿真、RGB-D，H1 关闭。
+动图直接展示动作过程，点击可打开完整 MP4；按原录像仿真时间播放，不包含模型等待时间。
+代码是对应运行中模型生成的原文，可展开查看；不是人工编写的理想示例。
+
+| 演示记录 | 模型 | 位置移动到位 | 独立任务验证 | Agent 主动停止 ACK / 释放租约 | 含模型等待的耗时 |
+| --- | --- | --- | --- | --- | --- |
+| Lift · seed 911 | fable5 | 3/3 | `lift_object` passed | 是 / 是 | 129.82 秒 |
+| Stack · seed 1202 | Opus 5.5 | 6/6 | `stack_objects` passed | 是 / 是 | 91.42 秒 |
+| PickPlaceCan · seed 1302 | Opus 5.5 | 7/7 | `place_object` passed | 是 / 是 | 106.20 秒 |
+
+控制到位和任务成功分别统计，兜底收尾不计作 Agent 自主完成。
+[记录来源、已知错误与验证边界](docs/demos/README.md) · [文件哈希与来源清单](docs/demos/manifest.json)
+
+#### Lift：抓起红方块
+
+> 任务摘要：根据当前 RGB-D 观测抓起红方块，独立验证 lift_object，最后停止并释放租约。
+
+[![Lift：抓起红方块，点击查看完整录像](docs/demos/lift/preview.gif)](docs/demos/lift/recording.mp4)
+
+[完整 MP4](docs/demos/lift/recording.mp4) · [原始自然语言任务](docs/demos/lift/task.txt)
+
+录像 6.65 秒。一段策略完成抓取与抬升；策略读取点云，估计抓取位置，再验证结果。
+
+<details>
+<summary>展开模型生成的完整 Lift policy</summary>
+
+[原始源码快照](docs/demos/lift/policy-1.py.txt)
+
+```python
+snap = observe()
+per = snap["state"]["perception"]
+if per["ok"] == False:
+    stop()
+pts = per["points"]
+n = len(pts)
+czc = per["centroid"][2]
+sx = 0.0
+sy = 0.0
+sz = 0.0
+c = 0
+for i in range(0, n, 6):
+    pt = pts[i]
+    if pt[2] > czc + 0.008:
+        sx = sx + pt[0]
+        sy = sy + pt[1]
+        sz = sz + pt[2]
+        c = c + 1
+if c < 3:
+    stop()
+gx = sx / c
+gy = sy / c
+gz = sz / c - 0.022
+print("grasp target", gx, gy, gz, "top samples", c)
+gripper_open()
+r1 = move_to(target_xyz=[gx, gy, gz + 0.10])
+print("pregrasp", r1["result"]["motion"]["reached"], r1["result"]["motion"]["error_max_m"])
+r2 = move_to(target_xyz=[gx, gy, gz])
+print("descend", r2["result"]["motion"]["reached"], r2["result"]["motion"]["error_max_m"])
+gripper_close()
+mid = observe()
+print("after close ee", mid["state"]["end_effector_position"], "grip", mid["state"]["gripper_positions"])
+r3 = move_to(target_xyz=[gx, gy, gz + 0.15], max_steps=100)
+print("lift", r3["result"]["motion"]["reached"], r3["result"]["motion"]["error_max_m"])
+fin = observe()
+print("final ee", fin["state"]["end_effector_position"])
+print("final centroid", fin["state"]["perception"]["centroid"], "ok", fin["state"]["perception"]["ok"])
+print("cycles remaining", fin["state"]["control_cycles_remaining"])
+rep = verify("lift_object")
+print("verify status", rep["status"])
+```
+
+</details>
+
+#### Stack：把红方块叠到绿方块上
+
+> 任务摘要：根据 RGB-D 观测把红方块放到绿方块上，松爪、撤离，独立验证 stack_objects。
+
+[![Stack：把红方块叠到绿方块上，点击查看完整录像](docs/demos/stack/preview.gif)](docs/demos/stack/recording.mp4)
+
+[完整 MP4](docs/demos/stack/recording.mp4) · [原始自然语言任务](docs/demos/stack/task.txt)
+
+录像 6.80 秒。同一会话分两段生成策略：先抓起，再叠放。连接/租约并发曾返回 not_connected，Agent 自主纠正后继续；最终稳定 23 个控制周期。代码中的目标坐标是该次会话的生成结果，仅适用于这条历史记录。
+
+<details>
+<summary>展开第 1 段：抓取与抬升</summary>
+
+[原始源码快照](docs/demos/stack/policy-1.py.txt)
+
+```python
+s = observe()
+p = s["state"]["perception"]
+g = s["state"]["support_perception"]
+print("ok", p["ok"], g["ok"], p["centroid"], g["centroid"], s["state"]["end_effector_position"])
+rx = 0.0515
+ry = 0.017
+if p["ok"] and g["ok"]:
+    r = gripper_open()
+    m = move_to(target_xyz=[rx, ry, 0.93], tolerance_xyz=[0.01, 0.01, 0.012], max_steps=60, settle_steps=3)
+    print("above", m["result"]["motion"]["reached"], m["result"]["motion"]["error_xyz"], m["result"]["motion"]["cycles"])
+    m = move_to(target_xyz=[rx, ry, 0.835], tolerance_xyz=[0.005, 0.005, 0.006], max_steps=60, settle_steps=3)
+    print("down", m["result"]["motion"]["reached"], m["result"]["motion"]["error_xyz"], m["result"]["motion"]["cycles"])
+    r = gripper_close()
+    m = move_to(target_xyz=[rx, ry, 0.95], tolerance_xyz=[0.01, 0.01, 0.012], max_steps=60, settle_steps=3)
+    print("lift", m["result"]["motion"]["reached"], m["result"]["motion"]["cycles"])
+    s2 = observe()
+    print("after", s2["state"]["perception"]["ok"], s2["state"]["perception"]["centroid"], s2["state"]["end_effector_position"], s2["state"]["gripper_positions"], s2["state"]["control_cycles_remaining"])
+```
+
+</details>
+
+<details>
+<summary>展开第 2 段：叠放、松爪、撤离与验证</summary>
+
+[原始源码快照](docs/demos/stack/policy-2.py.txt)
+
+```python
+gx = -0.068
+gy = 0.025
+m = move_to(target_xyz=[gx, gy, 0.95], tolerance_xyz=[0.005, 0.005, 0.01], max_steps=60, settle_steps=3)
+print("over", m["result"]["motion"]["reached"], m["result"]["motion"]["error_xyz"], m["result"]["motion"]["cycles"])
+m = move_to(target_xyz=[gx, gy, 0.893], tolerance_xyz=[0.004, 0.004, 0.006], max_steps=50, settle_steps=3)
+print("place", m["result"]["motion"]["reached"], m["result"]["motion"]["position_xyz"], m["result"]["motion"]["cycles"])
+r = gripper_open()
+m = move_to(target_xyz=[gx, gy, 0.99], tolerance_xyz=[0.01, 0.01, 0.015], max_steps=40, settle_steps=3)
+print("retreat", m["result"]["motion"]["reached"], m["result"]["motion"]["cycles"])
+s = observe()
+print("red", s["state"]["perception"]["centroid"], "green", s["state"]["support_perception"]["centroid"], "rem", s["state"]["control_cycles_remaining"])
+v = verify("stack_objects")
+print("verify", v["status"])
+```
+
+</details>
+
+#### PickPlaceCan：把饮料罐放进指定格子
+
+> 任务摘要：根据 RGB-D 观测把红色饮料罐放到 task_goal 指定格子，松爪、撤离、等待稳定并独立验证。
+
+[![PickPlaceCan：把饮料罐放进指定格子，点击查看完整录像](docs/demos/pickplace/preview.gif)](docs/demos/pickplace/recording.mp4)
+
+[完整 MP4](docs/demos/pickplace/recording.mp4) · [原始自然语言任务](docs/demos/pickplace/task.txt)
+
+录像 16.65 秒。目标格由公开固定工位规格给出，罐子位置来自相机。第一次策略使用了不支持的列表推导式，在执行动作前被拒绝；模型自主改写为下方普通循环后成功。采用连续任务模式，无整任务执行额度；仍保留单次移动的到位/超时判定。
+
+<details>
+<summary>展开模型纠正后实际执行的完整 PickPlace policy</summary>
+
+[原始源码快照](docs/demos/pickplace/policy-1.py.txt)
+
+```python
+snap = observe()
+st = snap["state"]
+per = st["perception"]
+if not per["ok"]:
+    print("perception not ok")
+    stop()
+pts = per["points"]
+zmax = -10.0
+zmin = 10.0
+ymin = 10.0
+ymax = -10.0
+xmax = -10.0
+for p in pts:
+    zmax = max(zmax, p[2])
+    zmin = min(zmin, p[2])
+    ymin = min(ymin, p[1])
+    ymax = max(ymax, p[1])
+    xmax = max(xmax, p[0])
+xmin_top = 10.0
+for p in pts:
+    if p[2] > zmax - 0.006:
+        xmin_top = min(xmin_top, p[0])
+cx = (xmin_top + xmax) / 2.0
+cy = (ymin + ymax) / 2.0
+print("can est", cx, cy, zmin, zmax)
+goal = st["task_goal"]
+gx = goal["center_xy"][0]
+gy = goal["center_xy"][1]
+grasp_z = zmax - 0.035
+gripper_open()
+r = move_to(target_xyz=[cx, cy, zmax + 0.10], max_steps=200, timeout_seconds=60)
+print("above", r["result"]["motion"]["reached"], r["result"]["motion"]["error_max_m"])
+r = move_to(target_xyz=[cx, cy, grasp_z], max_steps=200, timeout_seconds=60)
+print("down", r["result"]["motion"]["reached"], r["result"]["motion"]["error_max_m"])
+gripper_close()
+s = observe()
+print("grip", s["state"]["gripper_positions"])
+r = move_to(target_xyz=[cx, cy, 1.08], max_steps=200, timeout_seconds=60)
+s = observe()
+print("lifted ee", s["state"]["end_effector_position"], "can", s["state"]["perception"]["centroid"], s["state"]["perception"]["ok"])
+r = move_to(target_xyz=[gx, gy, 1.08], max_steps=300, timeout_seconds=90)
+r = move_to(target_xyz=[gx, gy, 0.98], max_steps=200, timeout_seconds=60)
+s = observe()
+print("over bin ee", s["state"]["end_effector_position"], "can", s["state"]["perception"]["centroid"])
+gripper_open()
+r = move_to(target_xyz=[gx, gy, 1.12], max_steps=200, timeout_seconds=60)
+r = move_to(target_xyz=[gx, gy, 1.12], max_steps=60, settle_steps=20, timeout_seconds=30)
+s = observe()
+print("after retreat can", s["state"]["perception"]["centroid"], s["state"]["perception"]["ok"])
+rep = verify("place_object")
+print("verify", rep["status"])
+print(rep)
+```
+
+</details>
+
+[保留的首次被拒绝策略](docs/demos/pickplace/rejected-policy.py.txt)（未执行动作）。
+
+连接、租约、武装、策略外 `robo_verify`、停止与释放由 CLI 的其他工具调用完成，因此不出现在上述 policy 源码里。
+这些源码保留当时模型选择的移动参数和历史预算字段；展示历史证据，不修改当前连续模式配置。
 
 ### 从本分支安装
 
@@ -55,6 +271,7 @@ uv run --no-sync robo --help
 ## Table of Contents
 
 - [当前能力与验证边界](#当前能力与验证边界)
+- [Agent 任务演示与生成的 Policy](#agent-任务演示与生成的-policy)
 - [从本分支安装](#从本分支安装)
 - [Mac 可视化快速开始](#quick-start)
 - [场景、H1 与运行记录](#场景h1-与运行记录)
@@ -272,7 +489,7 @@ MCP 子进程。
 | --- | --- |
 | `ROBO_SIM_TASK = "Lift"` / `"Stack"` / `"PickPlace"` | 选择任务；省略时为 Lift |
 | `ROBO_SIM_OBSERVATION_MODE = "rgbd"` | 相机观测；省略时原适配器默认 `privileged`，含物体真值，不能当作视觉评测 |
-| `ROBO_SIM_GEOMETRY_LIBRARY = "off"` / `"h1-v8-v9"` | 关闭或启用 H1；H1 仅用于 RGB-D Lift，Stack 保持 off |
+| `ROBO_SIM_GEOMETRY_LIBRARY = "off"` / `"h1-v8-v9"` | 关闭或启用 H1；H1 仅用于 RGB-D Lift，Stack / PickPlace 保持 off |
 | `ROBO_SIM_SEED = "1201"` | 固定初始场景；省略时随机，不保证模型输出可复现 |
 | `ROBO_SIM_HEADLESS = "1"` | 不打开 Viewer，仍可生成证据和录像 |
 

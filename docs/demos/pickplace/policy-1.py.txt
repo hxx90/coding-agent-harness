@@ -1,0 +1,52 @@
+snap = observe()
+st = snap["state"]
+per = st["perception"]
+if not per["ok"]:
+    print("perception not ok")
+    stop()
+pts = per["points"]
+zmax = -10.0
+zmin = 10.0
+ymin = 10.0
+ymax = -10.0
+xmax = -10.0
+for p in pts:
+    zmax = max(zmax, p[2])
+    zmin = min(zmin, p[2])
+    ymin = min(ymin, p[1])
+    ymax = max(ymax, p[1])
+    xmax = max(xmax, p[0])
+xmin_top = 10.0
+for p in pts:
+    if p[2] > zmax - 0.006:
+        xmin_top = min(xmin_top, p[0])
+cx = (xmin_top + xmax) / 2.0
+cy = (ymin + ymax) / 2.0
+print("can est", cx, cy, zmin, zmax)
+goal = st["task_goal"]
+gx = goal["center_xy"][0]
+gy = goal["center_xy"][1]
+grasp_z = zmax - 0.035
+gripper_open()
+r = move_to(target_xyz=[cx, cy, zmax + 0.10], max_steps=200, timeout_seconds=60)
+print("above", r["result"]["motion"]["reached"], r["result"]["motion"]["error_max_m"])
+r = move_to(target_xyz=[cx, cy, grasp_z], max_steps=200, timeout_seconds=60)
+print("down", r["result"]["motion"]["reached"], r["result"]["motion"]["error_max_m"])
+gripper_close()
+s = observe()
+print("grip", s["state"]["gripper_positions"])
+r = move_to(target_xyz=[cx, cy, 1.08], max_steps=200, timeout_seconds=60)
+s = observe()
+print("lifted ee", s["state"]["end_effector_position"], "can", s["state"]["perception"]["centroid"], s["state"]["perception"]["ok"])
+r = move_to(target_xyz=[gx, gy, 1.08], max_steps=300, timeout_seconds=90)
+r = move_to(target_xyz=[gx, gy, 0.98], max_steps=200, timeout_seconds=60)
+s = observe()
+print("over bin ee", s["state"]["end_effector_position"], "can", s["state"]["perception"]["centroid"])
+gripper_open()
+r = move_to(target_xyz=[gx, gy, 1.12], max_steps=200, timeout_seconds=60)
+r = move_to(target_xyz=[gx, gy, 1.12], max_steps=60, settle_steps=20, timeout_seconds=30)
+s = observe()
+print("after retreat can", s["state"]["perception"]["centroid"], s["state"]["perception"]["ok"])
+rep = verify("place_object")
+print("verify", rep["status"])
+print(rep)

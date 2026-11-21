@@ -1,0 +1,63 @@
+{
+  "note": "These trials ran with uncommitted changes. A base HEAD alone is not an exact run version. Recorded source SHA-256 values are retained here; this README update performs no new trial.",
+  "lift": {
+    "source": "receipt-contract-20261119/candidate.json",
+    "file_hashes": {
+      "vibe/core/agent_loop/_generation.py": "a90d915d872683040c92fe671c5054e9fde66409fb57f5a526c100993603160d",
+      "vibe/hardware_sim/_target_motion.py": "9cb935b466db77a7f9067b13e9e350dd47fde52ece059f0e806790715a062664",
+      "vibe/core/hardware/policy.py": "a2fb0236ccabee9274a042004f84dc879190ed11c0f056cf10b04d414e17729a",
+      "vibe/core/tools/builtins/prompts/robo_run_policy.md": "ec7da50db329dc2cfe1e70aea09b073cb51c89c2773e93ba82b1bc357fb764bb",
+      "vibe/core/tools/builtins/robo.py": "7752cd3af94e0a41b1f67eb7bc6e1e34d145c742cddc9a52e63a142cef064f35",
+      "vibe/hardware_sim/adapter.py": "eba97daea845018ede1295f3dffced843f53982358ab94196c1aed45635c2f55"
+    }
+  },
+  "stack": {
+    "source": "stack-fix-20261121/attempt-01/source-version.json",
+    "base_head": "e3ca252514e207076a8e421890328e71eb130f0f",
+    "dirty": true,
+    "model": {
+      "name": "claude-opus-5-5",
+      "alias": "opus-5.5",
+      "reasoning_effort": null,
+      "max_output_tokens": 128000
+    },
+    "limits": {
+      "model_calls": 16,
+      "seconds": 480,
+      "actions": 80,
+      "control_cycles": 400,
+      "cumulative_token_quota": false,
+      "separate_cleanup_seconds": 30
+    },
+    "source_hashes": {
+      "generic_sha256": "e8385222acd495836d169929e89e299f7305cbce73d40c7e728508902ec74cfa"
+    }
+  },
+  "pickplace": {
+    "source": "continuous-mode-20261121/pickplace-attempt-01/source-version.json",
+    "base_head": "e3ca252514e207076a8e421890328e71eb130f0f",
+    "dirty": true,
+    "model": {
+      "name": "claude-opus-5-5",
+      "alias": "opus-5.5",
+      "reasoning_effort": null,
+      "max_output_tokens": 128000
+    },
+    "limits": {
+      "model_calls": null,
+      "seconds": null,
+      "actions": null,
+      "control_cycles": null,
+      "cumulative_token_quota": false,
+      "separate_cleanup_seconds": 30
+    },
+    "source_hashes": {
+      "vibe/core/hardware/policy.py": "95b80493b0196aac1eed5ee9aead11b2ac59da13c74ceb320885058aa520f023",
+      "vibe/core/tools/builtins/robo.py": "830e9ab54f8ee469f51f592ef17915492914596755f040ab5df91b3c6e7addbf",
+      "vibe/core/agent_loop/_loop.py": "216d8e15762ab18e0f0c80d007b75b35ec02dd95fd5dc4797694350c2935d364",
+      "vibe/core/agent_loop/_generation.py": "6343b060d018a16f276791348d7e242303c925ab218aaf81f09652b876ea2c06",
+      "vibe/core/config/models.py": "8f43013539425abca3d67e13e2707f06c7bcdecc89a5893da23d96d501553275",
+      "vibe/core/agent_loop/_request_retry.py": "3a888dec1fa477c625a8765c708f171f47845fd31a76bd5e2608facf149de793"
+    }
+  }
+}

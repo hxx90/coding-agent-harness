@@ -1,0 +1,17 @@
+s = observe()
+p = s["state"]["perception"]
+g = s["state"]["support_perception"]
+print("ok", p["ok"], g["ok"], p["centroid"], g["centroid"], s["state"]["end_effector_position"])
+rx = 0.0515
+ry = 0.017
+if p["ok"] and g["ok"]:
+    r = gripper_open()
+    m = move_to(target_xyz=[rx, ry, 0.93], tolerance_xyz=[0.01, 0.01, 0.012], max_steps=60, settle_steps=3)
+    print("above", m["result"]["motion"]["reached"], m["result"]["motion"]["error_xyz"], m["result"]["motion"]["cycles"])
+    m = move_to(target_xyz=[rx, ry, 0.835], tolerance_xyz=[0.005, 0.005, 0.006], max_steps=60, settle_steps=3)
+    print("down", m["result"]["motion"]["reached"], m["result"]["motion"]["error_xyz"], m["result"]["motion"]["cycles"])
+    r = gripper_close()
+    m = move_to(target_xyz=[rx, ry, 0.95], tolerance_xyz=[0.01, 0.01, 0.012], max_steps=60, settle_steps=3)
+    print("lift", m["result"]["motion"]["reached"], m["result"]["motion"]["cycles"])
+    s2 = observe()
+    print("after", s2["state"]["perception"]["ok"], s2["state"]["perception"]["centroid"], s2["state"]["end_effector_position"], s2["state"]["gripper_positions"], s2["state"]["control_cycles_remaining"])

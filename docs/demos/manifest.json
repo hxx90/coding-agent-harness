@@ -1,0 +1,146 @@
+{
+  "description": "Historical autonomous CLI runs. Original policy and MP4 bytes preserved. GIF previews resampled to 10 fps at original simulation playback speed. Source paths are relative to the private experiment outputs directory, not repository links.",
+  "demos": {
+    "lift": {
+      "trial": "receipt-contract-20261119/acceptance-911",
+      "assets": [
+        {
+          "file": "lift/recording.mp4",
+          "kind": "original_video",
+          "source": "receipt-contract-20261119/acceptance-911/hardware-runs/recordings/robo-mujoco/mujoco-panda-469f98585fbd4d0ea585dbb90b3f7a2a.mp4",
+          "sha256": "d68b5032dcce0b26ba64d29aeff09e7edaa3dc301f399ba6ad5c5b8fb004861e"
+        },
+        {
+          "file": "lift/policy-1.py.txt",
+          "kind": "original_generated_policy",
+          "source": "receipt-contract-20261119/acceptance-911/sessions/session_20261118_171443_feb3cd97/hardware-runs/policies/4908647d190a4c59bdfd75ed1a2f309d.py",
+          "sha256": "3db8e1605be2150af097d69e9fea41b2e2ecc8969cacb29e658166c951c5cc8f"
+        },
+        {
+          "file": "lift/task.txt",
+          "kind": "original_natural_language_task",
+          "source": "receipt-contract-20261119/task.txt",
+          "sha256": "36be6817d5bd1a8a372e301bb66fa522ec106d4ea62b0c2f7dd82677780479f5"
+        }
+      ],
+      "video": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "mpeg4",
+            "width": 384,
+            "height": 384,
+            "r_frame_rate": "20/1",
+            "nb_frames": "133"
+          }
+        ],
+        "format": {
+          "duration": "6.650000"
+        }
+      },
+      "preview": {
+        "file": "lift/preview.gif",
+        "sha256": "dcd9ba54ad92443615a8f925ab9228b628f6abc10ee4929126b3507babe6327c"
+      }
+    },
+    "stack": {
+      "trial": "stack-fix-20261121/attempt-01/trial-1202",
+      "assets": [
+        {
+          "file": "stack/recording.mp4",
+          "kind": "original_video",
+          "source": "stack-fix-20261121/attempt-01/trial-1202/hardware-runs/recordings/robo-mujoco/mujoco-panda-283fb7a61d964dee9f268dfcd9192a38.mp4",
+          "sha256": "37fc49eecb6a6b4fc47cef34f1a45dd6f29e92660d32b6d49f932ef74c05e0e5"
+        },
+        {
+          "file": "stack/policy-1.py.txt",
+          "kind": "original_generated_policy",
+          "source": "stack-fix-20261121/attempt-01/trial-1202/sessions/session_20261120_174335_6e77817d/hardware-runs/policies/baf726f40ade4360afdd424d14060775.py",
+          "sha256": "0ce9951402d62c09ace96073ccded36b7b531f672d25c1dc9c1ec760be1be272"
+        },
+        {
+          "file": "stack/policy-2.py.txt",
+          "kind": "original_generated_policy",
+          "source": "stack-fix-20261121/attempt-01/trial-1202/sessions/session_20261120_174335_6e77817d/hardware-runs/policies/efa4d385b896493eb8eea2b3e0d8342c.py",
+          "sha256": "5b8a5c845702617c66482ef390db8f4dbb90510cd7c31547f688c65bb7b3fe03"
+        },
+        {
+          "file": "stack/task.txt",
+          "kind": "original_natural_language_task",
+          "source": "stack-fix-20261121/attempt-01/task.txt",
+          "sha256": "ccddf815c36440399f4b931251b440931061c57579891fd198a91f8811ae06d9"
+        }
+      ],
+      "video": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "mpeg4",
+            "width": 384,
+            "height": 384,
+            "r_frame_rate": "20/1",
+            "nb_frames": "136"
+          }
+        ],
+        "format": {
+          "duration": "6.800000"
+        }
+      },
+      "preview": {
+        "file": "stack/preview.gif",
+        "sha256": "473ce8e11a30f66404a816980e6b41f693ca98abd5b833153c994b208719848b"
+      }
+    },
+    "pickplace": {
+      "trial": "continuous-mode-20261121/pickplace-attempt-01/trial-1302",
+      "assets": [
+        {
+          "file": "pickplace/recording.mp4",
+          "kind": "original_video",
+          "source": "continuous-mode-20261121/pickplace-attempt-01/trial-1302/hardware-runs/recordings/robo-mujoco/mujoco-panda-2435c1e1c66f46ce845f8f1e9c0dbb02.mp4",
+          "sha256": "62a80476d0305bad9173af104998af0e8a531575f5be9cdb2dc2df80677dddb6"
+        },
+        {
+          "file": "pickplace/policy-1.py.txt",
+          "kind": "original_generated_policy",
+          "source": "continuous-mode-20261121/pickplace-attempt-01/trial-1302/sessions/session_20261121_040404_fe410111/hardware-runs/policies/0423972f66c84192b87ab1d6dce296de.py",
+          "sha256": "5173c594932be75448eb8c6aaf0874778d47157331f4f3d842c5d04120aa6c7a"
+        },
+        {
+          "file": "pickplace/rejected-policy.py.txt",
+          "kind": "original_rejected_policy_no_actions",
+          "source": "continuous-mode-20261121/pickplace-attempt-01/trial-1302/sessions/session_20261121_040404_fe410111/hardware-runs/policies/a1c6f8adf14f4d67a0d814eaa318b3a6.py",
+          "sha256": "2aaa9cdd0c2d52e33f436a928ca8b108115e78e439046a7e64b067959b0a6f8a"
+        },
+        {
+          "file": "pickplace/task.txt",
+          "kind": "original_natural_language_task",
+          "source": "continuous-mode-20261121/pickplace-attempt-01/task.txt",
+          "sha256": "b961d67df4e133f67702bf1b68a142b1d9a9e671b53e9dedc508ef50583aa252"
+        }
+      ],
+      "video": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "mpeg4",
+            "width": 384,
+            "height": 384,
+            "r_frame_rate": "20/1",
+            "nb_frames": "333"
+          }
+        ],
+        "format": {
+          "duration": "16.650000"
+        }
+      },
+      "preview": {
+        "file": "pickplace/preview.gif",
+        "sha256": "457cfbfcdf1c2e9ed69a41edde5208da6cdc25fa365c94b4450132902f7f6ed1"
+      }
+    }
+  }
+}

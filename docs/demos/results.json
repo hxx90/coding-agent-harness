@@ -1,0 +1,131 @@
+{
+  "lift": {
+    "date": "2026-11-19",
+    "seed": 911,
+    "model": "claude-fable-5",
+    "alias": "fable5",
+    "elapsed_seconds": 129.8196297492832,
+    "model_calls": 10,
+    "control_reached": 3,
+    "control_attempts": 3,
+    "actions": 5,
+    "actor_independent_verification": "passed",
+    "actor_stop_ack": true,
+    "actor_release": true,
+    "autonomous_success": true,
+    "policy_verification": {
+      "criterion": "lift_object",
+      "status": "passed",
+      "summary": "The cube is grasped and lifted.",
+      "checks": [
+        {
+          "name": "object_grasped",
+          "status": "passed",
+          "observed": true,
+          "expected": "true",
+          "evidence_ids": [
+            "069a9b1a04794c75b7bb70ff5553f35f"
+          ]
+        },
+        {
+          "name": "object_lifted",
+          "status": "passed",
+          "observed": true,
+          "expected": "cube at least 0.04 m above the table",
+          "evidence_ids": [
+            "069a9b1a04794c75b7bb70ff5553f35f"
+          ]
+        }
+      ]
+    },
+    "protocol": "historical-bounded",
+    "tool_errors": []
+  },
+  "stack": {
+    "date": "2026-11-21",
+    "seed": 1202,
+    "model": "claude-opus-5-5",
+    "elapsed_seconds": 91.41707933321595,
+    "model_calls": 10,
+    "control_reached": 6,
+    "control_attempts": 6,
+    "actions": 9,
+    "actor_independent_verification": "passed",
+    "actor_stop_ack": true,
+    "actor_release": true,
+    "autonomous_success": true,
+    "external_verification": {
+      "criterion": "stack_objects",
+      "status": "passed",
+      "summary": "Red cube released and stably stacked on green.",
+      "checks": [
+        {
+          "name": "official_stack_released",
+          "status": "passed",
+          "observed": true,
+          "expected": "true",
+          "evidenceIds": [
+            "eee7fdb199084ba59f419ecfd58f4b8a"
+          ]
+        },
+        {
+          "name": "stable_stack",
+          "status": "passed",
+          "observed": 23,
+          "expected": "20 consecutive cycles: official Stack success, linear speed <0.01 m/s and angular speed <0.1 rad/s for both cubes",
+          "evidenceIds": [
+            "eee7fdb199084ba59f419ecfd58f4b8a"
+          ]
+        }
+      ]
+    },
+    "protocol": "historical-bounded",
+    "tool_errors": [
+      "not_connected before acquiring lease; actor corrected"
+    ]
+  },
+  "pickplace": {
+    "date": "2026-11-21",
+    "seed": 1302,
+    "model": "claude-opus-5-5",
+    "elapsed_seconds": 106.20068979263306,
+    "model_calls": 10,
+    "control_reached": 7,
+    "control_attempts": 7,
+    "actions": 10,
+    "actor_independent_verification": "passed",
+    "actor_stop_ack": true,
+    "actor_release": true,
+    "autonomous_success": true,
+    "external_verification": {
+      "criterion": "place_object",
+      "status": "passed",
+      "summary": "Can released and stably placed in its assigned bin.",
+      "checks": [
+        {
+          "name": "official_pickplace_released",
+          "status": "passed",
+          "observed": true,
+          "expected": "Can in assigned bin, gripper retreated and not grasping",
+          "evidenceIds": [
+            "76dbe6830d0f416796f422669e16551a"
+          ]
+        },
+        {
+          "name": "stable_placement",
+          "status": "passed",
+          "observed": 20,
+          "expected": "20 consecutive cycles: released in bin, peak-to-peak position drift <=0.002 m and rotation drift <=2 degrees",
+          "evidenceIds": [
+            "76dbe6830d0f416796f422669e16551a"
+          ]
+        }
+      ]
+    },
+    "protocol": "continuous",
+    "tool_errors": [
+      "not_connected before acquiring lease; actor corrected",
+      "unsafe_policy: ListComp rejected before actions; actor generated a corrected policy"
+    ]
+  }
+}
